@@ -13,8 +13,12 @@
 #endif /* NO_DL */
 
 #include "tss2_tcti.h"
-#include "tss2_tcti_device.h"
 #include "tss2_tcti_mssim.h"
+#ifdef _WIN32
+#include "tss2_tcti_tbs.h"
+#else /* _WIN32 */
+#include "tss2_tcti_device.h"
+#endif /* else */
 
 #define LOGMODULE esys
 #include "util/log.h"
@@ -33,17 +37,22 @@ struct {
     char *description;
 } tctis[] = {
 #ifndef NO_DL
-    { "libtss2-tcti-default.so", NULL, "", "Access libtss2-tcti-default.so" },
+    { "libtss2-tcti-default.so", NULL, NULL, "Access libtss2-tcti-default.so" },
     { "libtss2-tcti-tabrmd.so", NULL, "", "Access libtss2-tcti-tabrmd.so" },
 #endif /* NO_DL */
+#ifdef _WIN32
+    { .init = Tss2_Tcti_Tbs_Init, .conf = "",
+      .description = "Access to TBS" },
+#else /* _WIN32 */
     { .init = Tss2_Tcti_Device_Init, .conf = "/dev/tpmrm0",
       .description = "Access to /dev/tpmrm0" },
     { .init = Tss2_Tcti_Device_Init, .conf = "/dev/tpm0",
       .description = "Access to /dev/tpm0" },
+#endif /* else */
 #ifdef TCTI_MSSIM
     { .init = Tss2_Tcti_Mssim_Init, .conf = "host=localhost,port=2321",
       .description = "Access to Mssim-simulator for tcp://localhost:2321" },
-#endif
+#endif /* TCTI_MSSIM */
 };
 
 static TSS2_RC
@@ -113,7 +122,8 @@ tcti_from_info(TSS2_TCTI_INFO_FUNC infof,
 static TSS2_RC
 tcti_from_file(const char *file,
                const char* conf,
-               TSS2_TCTI_CONTEXT **tcti)
+               TSS2_TCTI_CONTEXT **tcti,
+               void **dlhandle)
 {
     TSS2_RC r;
     void *handle;
@@ -141,6 +151,9 @@ tcti_from_file(const char *file,
         return r;
     }
 
+    if (dlhandle)
+        *dlhandle = handle;
+
     LOG_DEBUG("Initialized TCTI file: %s", file);
 
     return TSS2_RC_SUCCESS;
@@ -148,7 +161,7 @@ tcti_from_file(const char *file,
 #endif /* NO_DL */
 
 TSS2_RC
-get_tcti_default(TSS2_TCTI_CONTEXT ** tcticontext)
+get_tcti_default(TSS2_TCTI_CONTEXT ** tcticontext, void **dlhandle)
 {
     if (tcticontext == NULL) {
         LOG_ERROR("tcticontext must not be NULL");
@@ -165,7 +178,8 @@ get_tcti_default(TSS2_TCTI_CONTEXT ** tcticontext)
 
     LOG_DEBUG("Attempting to initialize TCTI defined during compilation: %s:%s",
               ESYS_TCTI_DEFAULT_MODULE, config);
-    return tcti_from_file(ESYS_TCTI_DEFAULT_MODULE, config, tcticontext);
+    return tcti_from_file(ESYS_TCTI_DEFAULT_MODULE, config, tcticontext,
+                          dlhandle);
 
 #else /* ESYS_TCTI_DEFAULT_MODULE */
 
@@ -182,7 +196,8 @@ get_tcti_default(TSS2_TCTI_CONTEXT ** tcticontext)
             LOG_DEBUG("Failed to load standard TCTI number %zu", i);
 #ifndef NO_DL
         } else if (tctis[i].file != NULL) {
-            r = tcti_from_file(tctis[i].file, tctis[i].conf, tcticontext);
+            r = tcti_from_file(tctis[i].file, tctis[i].conf, tcticontext,
+                               dlhandle);
             if (r == TSS2_RC_SUCCESS)
                 return TSS2_RC_SUCCESS;
             LOG_DEBUG("Failed to load standard TCTI number %zu", i);

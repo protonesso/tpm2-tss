@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: BSD-2 */
 /*******************************************************************************
- * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG All
- * rights reserved.
+ * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG
+ * All rights reserved.
  *******************************************************************************/
+
+#include <stdlib.h>
 
 #include "tss2_esys.h"
 
@@ -10,14 +12,20 @@
 #define LOGMODULE test
 #include "util/log.h"
 
-/*
- * This test is intended to test the ESAPI get capability command.
+/** This test is intended to test the ESAPI get capability command.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_GetCapability() (M)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SUCCESS
  */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_get_capability(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
     TPM2_CAP                       capability = TPM2_CAP_TPM_PROPERTIES;
     UINT32                         property = TPM2_PT_LOCKOUT_COUNTER;
     UINT32                         propertyCount = 1;
@@ -32,8 +40,13 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
 
     goto_if_error(r, "Error esys get capability", error);
 
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return 1;
+    return EXIT_FAILURE;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_get_capability(esys_context);
 }

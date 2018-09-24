@@ -4,18 +4,33 @@
  * All rights reserved.
  *******************************************************************************/
 
+#include <stdlib.h>
+
 #include "tss2_esys.h"
 
 #include "esys_iutil.h"
+#include "test-esapi.h"
 #define LOGMODULE test
 #include "util/log.h"
 
-/* Test the ESAPI function Esys_SetAlgorithmSet */
+/** Test the ESAPI function Esys_SetAlgorithmSet. 
+ *
+ *\b Note: platform authorization needed.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_SetAlgorithmSet() (O)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SKIP
+ * @retval EXIT_SUCCESS
+ */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_set_algorithm_set(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
+    int failure_return = EXIT_FAILURE;
 
     UINT32 algorithmSet = 0;
 
@@ -26,10 +41,30 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         ESYS_TR_NONE,
         ESYS_TR_NONE,
         algorithmSet);
+
+    if ((r == TPM2_RC_COMMAND_CODE) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_RC_LAYER)) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_TPM_RC_LAYER))) {
+        LOG_WARNING("Command TPM2_SetAlgorithmSet not supported by TPM.");
+        failure_return = EXIT_SKIP;
+        goto error;
+    }
+
+    if ((r & ~TPM2_RC_N_MASK) == TPM2_RC_BAD_AUTH) {
+        /* Platform authorization not possible test will be skipped */
+        LOG_WARNING("Platform authorization not possible.");
+        failure_return = EXIT_SKIP;
+    }
+
     goto_if_error(r, "Error: SetAlgorithmSet", error);
 
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return r;
+    return failure_return;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_set_algorithm_set(esys_context);
 }

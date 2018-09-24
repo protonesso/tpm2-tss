@@ -4,18 +4,35 @@
  * All rights reserved.
  *******************************************************************************/
 
+#include <stdlib.h>
+
 #include "tss2_esys.h"
 
 #include "esys_iutil.h"
+#include "test-esapi.h"
 #define LOGMODULE test
 #include "util/log.h"
 
-/* Test the ESAPI functions related to TPM locks  */
+/** Test the ESAPI functions related to TPM locks. 
+ *
+ *\b Note: platform authorization needed.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_DictionaryAttackLockReset() (M)
+ *  - Esys_DictionaryAttackParameters() (M)
+ *  - Esys_NV_GlobalWriteLock() (O)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SKIP
+ * @retval EXIT_SUCCESS
+ */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_lock(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
+    int failure_return = EXIT_FAILURE;
 
     r = Esys_DictionaryAttackLockReset(
         esys_context,
@@ -38,10 +55,29 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
 
     r = Esys_NV_GlobalWriteLock(esys_context, ESYS_TR_RH_PLATFORM,
                                 ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE);
+
+    if ((r == TPM2_RC_COMMAND_CODE) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_RC_LAYER)) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_TPM_RC_LAYER))) {
+        LOG_WARNING("Command TPM2_NV_GlobalWriteLock not supported by TPM.");
+        failure_return = EXIT_SKIP;
+        goto error;
+    }
+
+    if ((r & ~TPM2_RC_N_MASK) == TPM2_RC_BAD_AUTH) {
+        /* Platform authorization not possible test will be skipped */
+        LOG_WARNING("Platform authorization not possible.");
+        return EXIT_SKIP;
+    }
     goto_if_error(r, "Error: NV_GlobalWriteLock", error);
 
-    return 0;
+    return EXIT_SUCCESS;
 
   error:
-    return 1;
+    return failure_return;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_lock(esys_context);
 }

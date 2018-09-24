@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2 */
 /*******************************************************************************
- * Copyright 2017, Fraunhofer SIT sponsored by Infineon Technologies AG
+ * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG
  * All rights reserved.
  *******************************************************************************/
 
@@ -12,8 +12,18 @@
 #define LOGMODULE test
 #include "util/log.h"
 
+/** Test the ESAPI function Esys_GetRandom. 
+ *
+ * Tested ESAPI commands:
+ *  - Esys_GetRandom() (M)
+ *  - Esys_StartAuthSession() (M)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SUCCESS
+ */
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_get_random(ESYS_CONTEXT * esys_context)
 {
 
     TSS2_RC r;
@@ -32,7 +42,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
 
     LOG_INFO("GetRandom Test Passed!");
 
-    ESYS_TR session;
+    ESYS_TR session = ESYS_TR_NONE;
     const TPMT_SYM_DEF symmetric = {
         .algorithm = TPM2_ALG_AES,
         .keyBits = {.aes = 128},
@@ -69,7 +79,13 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
 
     LOG_INFO("GetRandom with session Test Passed!");
 
-    return 0;
+    r = Esys_FlushContext(esys_context, session);
+    if (r != TPM2_RC_SUCCESS) {
+        LOG_ERROR("FlushContext with session FAILED! Response Code : 0x%x", r);
+        goto error_cleansession;
+    }
+
+    return EXIT_SUCCESS;
 
  error_cleansession:
     r = Esys_FlushContext(esys_context, session);
@@ -77,5 +93,10 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         LOG_ERROR("FlushContext FAILED! Response Code : 0x%x", r);
     }
  error:
-    return 1;
+    return EXIT_FAILURE;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_get_random(esys_context);
 }

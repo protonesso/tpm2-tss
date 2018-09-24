@@ -4,21 +4,37 @@
  * All rights reserved.
  *******************************************************************************/
 
+#include <stdlib.h>
+
 #include "tss2_esys.h"
 
 #include "esys_iutil.h"
+#include "test-esapi.h"
 #define LOGMODULE test
 #include "util/log.h"
 
-/*
- * Test the basic commands for PCR processing: Esys_PCR_Extend, Esys_PCR_Read,
- * Esys_PCR_Reset, Esys_PCR_Event, and Esys_PCR_Allocate
+/** Test the basic commands for PCR processing.
+ *
+ *\b Note: platform authorization needed.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_PCR_Allocate() (M)
+ *  - Esys_PCR_Event() (M)
+ *  - Esys_PCR_Extend() (M)
+ *  - Esys_PCR_Read() (M)
+ *  - Esys_PCR_Reset() (M)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SKIP
+ * @retval EXIT_SUCCESS
  */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_pcr_basic(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
+    int failure_return = EXIT_FAILURE;
 
     ESYS_TR  pcrHandle_handle = 16;
     TPML_DIGEST_VALUES digests
@@ -114,11 +130,22 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         &sizeNeeded,
         &sizeAvailable);
 
+    if ((r & ~TPM2_RC_N_MASK) == TPM2_RC_BAD_AUTH) {
+        /* Platform authorization not possible test will be skipped */
+        LOG_WARNING("Platform authorization not possible.");
+        failure_return =  EXIT_SKIP;
+    }
+
     goto_if_error(r, "Error: PCR_Allocate", error);
 
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return 1;
+    return failure_return;
 
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_pcr_basic(esys_context);
 }

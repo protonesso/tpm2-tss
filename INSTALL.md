@@ -174,11 +174,18 @@ build in a container.
 ```
 $ docker build -t tpm2 .
 $ docker run --name temp tpm2 /bin/true
-$ docker cp temp:/tpm2-tss tpm2-tss
+$ docker cp temp:/tmp/tpm2-tss tpm2-tss
 $ docker rm temp
 ```
 
 tpm2-tss is now in your working directory and contains all the built files.
+
+To rebuild using your local changes mount your tmp2-tss directory as a volume.
+
+```console
+$ docker run --rm -ti -v $PWD:/tmp/tpm2-tss tpm2-tss \
+  sh -c 'make -j$(nproc) check'
+```
 
 ## Doxygen Documentation
 

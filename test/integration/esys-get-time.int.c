@@ -1,26 +1,41 @@
 /* SPDX-License-Identifier: BSD-2 */
 /*******************************************************************************
- * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG All
- * rights reserved.
+ * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG
+ * All rights reserved.
  *******************************************************************************/
+
+#include <stdlib.h>
 
 #include "tss2_esys.h"
 
 #include "esys_iutil.h"
+#include "test-esapi.h"
 #define LOGMODULE test
 #include "util/log.h"
 
-/*
- * This test is intended to test the GetTime command with password
- * authentication.
+/** This test is intended to test the GetTime command with password
+ *  authentication.
+ *
  * We create a RSA primary signing key which will be used
  * for signing.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_CreatePrimary() (M)
+ *  - Esys_FlushContext() (M)
+ *  - Esys_GetTime() (O)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SKIP
+ * @retval EXIT_SUCCESS
  */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_get_time(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
+    ESYS_TR signHandle = ESYS_TR_NONE;
+    int failure_return = EXIT_FAILURE;
 
     TPM2B_AUTH authValuePrimary = {
         .size = 5,
@@ -101,7 +116,6 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     r = Esys_TR_SetAuth(esys_context, ESYS_TR_RH_OWNER, &authValue);
     goto_if_error(r, "Error: TR_SetAuth", error);
 
-    ESYS_TR signHandle;
     RSRC_NODE_T *primaryHandle_node;
     TPM2B_PUBLIC *outPublic;
     TPM2B_CREATION_DATA *creationData;
@@ -133,21 +147,25 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     TPMT_SIGNATURE *signature;
 
     r = Esys_GetTime (
-        esys_context,
-        privacyAdminHandle,
-        signHandle,
-        ESYS_TR_PASSWORD,
-        ESYS_TR_PASSWORD,
-        ESYS_TR_NONE,
-        &qualifyingData,
-        &inScheme,
-        &timeInfo,
-        &signature);
-    if (r == TPM2_RC_COMMAND_CODE) {
-        LOG_INFO("Command TPM2_GetTime not supported by TPM.");
+         esys_context,
+         privacyAdminHandle,
+         signHandle,
+         ESYS_TR_PASSWORD,
+         ESYS_TR_PASSWORD,
+         ESYS_TR_NONE,
+         &qualifyingData,
+         &inScheme,
+         &timeInfo,
+         &signature);
+    if ((r == TPM2_RC_COMMAND_CODE) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_RC_LAYER)) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_TPM_RC_LAYER))) {
+        LOG_WARNING("Command TPM2_GetTime not supported by TPM.");
         r = Esys_FlushContext(esys_context, signHandle);
         goto_if_error(r, "Flushing context", error);
-        r = 77; /* Skip */
+
+        signHandle = ESYS_TR_NONE;
+        failure_return = EXIT_SKIP;
         goto error;
     }
     goto_if_error(r, "Error: GetTime", error);
@@ -155,8 +173,19 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     r = Esys_FlushContext(esys_context, signHandle);
     goto_if_error(r, "Error: FlushContext", error);
 
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return r;
+
+    if (signHandle != ESYS_TR_NONE) {
+        if (Esys_FlushContext(esys_context, signHandle) != TSS2_RC_SUCCESS) {
+            LOG_ERROR("Cleanup signHandle failed.");
+        }
+    }
+    return failure_return;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_get_time(esys_context);
 }

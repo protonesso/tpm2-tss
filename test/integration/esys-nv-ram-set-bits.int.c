@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: BSD-2 */
 /*******************************************************************************
- * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG All
- * rights reserved.
+ * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG
+ * All rights reserved.
  *******************************************************************************/
+
+#include <stdlib.h>
 
 #include "tss2_esys.h"
 
@@ -10,17 +12,32 @@
 #define LOGMODULE test
 #include "util/log.h"
 
-/*
- * This test is intended to test the definition of a bit field in NV ram and to
- * test the ESAPI NV_SetBits function.
+/** This test is intended to test the definition of a bit field in NV ram and to
+ *  test the ESAPI NV_SetBits function.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_FlushContext() (M)
+ *  - Esys_NV_DefineSpace() (M)
+ *  - Esys_NV_Read() (M)
+ *  - Esys_NV_ReadPublic() (M)
+ *  - Esys_NV_SetBits() (M)
+ *  - Esys_NV_UndefineSpace() (M)
+ *  - Esys_StartAuthSession() (M)
+ *
+ * Used compiler defines: TEST_SESSION
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SUCCESS
  */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_nv_ram_set_bits(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
+    ESYS_TR nvHandle = ESYS_TR_NONE;
 #ifdef TEST_SESSION
-    ESYS_TR session;
+    ESYS_TR session = ESYS_TR_NONE;
     TPMT_SYM_DEF symmetric = {.algorithm = TPM2_ALG_AES,
                               .keyBits = {.aes = 128},
                               .mode = {.aes = TPM2_ALG_CFB}
@@ -42,7 +59,6 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     goto_if_error(r, "Error: During initialization of session", error);
 #endif /* TEST_SESSION */
 
-    ESYS_TR nvHandle_handle;
     TPM2B_AUTH auth = {.size = 20,
                        .buffer={10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
                                 20, 21, 22, 23, 24, 25, 26, 27, 28, 29}};
@@ -79,7 +95,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                             ESYS_TR_NONE,
                             &auth,
                             &publicInfo,
-                            &nvHandle_handle);
+                            &nvHandle);
 
     goto_if_error(r, "Error esys define nv space", error);
 
@@ -87,7 +103,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     TPM2B_NAME *nvName;
 
     r = Esys_NV_ReadPublic(esys_context,
-                           nvHandle_handle,
+                           nvHandle,
                            ESYS_TR_NONE,
                            ESYS_TR_NONE,
                            ESYS_TR_NONE,
@@ -97,7 +113,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
 
     RSRC_NODE_T *nvHandleNode;
 
-    r = esys_GetResourceObject(esys_context, nvHandle_handle, &nvHandleNode);
+    r = esys_GetResourceObject(esys_context, nvHandle, &nvHandleNode);
     goto_if_error(r, "Error: nv get resource object", error);
 
     if (nvName->size != nvHandleNode->rsrc.name.size ||
@@ -109,8 +125,8 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     UINT64 bits = 0x0102030405060708;
 
     r = Esys_NV_SetBits(esys_context,
-                        nvHandle_handle,
-                        nvHandle_handle,
+                        nvHandle,
+                        nvHandle,
 #ifdef TEST_SESSION
                         session,
 #else
@@ -123,7 +139,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     goto_if_error(r, "Error esys nv write", error);
 
     r = Esys_NV_ReadPublic(esys_context,
-                           nvHandle_handle,
+                           nvHandle,
                            ESYS_TR_NONE,
                            ESYS_TR_NONE,
                            ESYS_TR_NONE,
@@ -131,7 +147,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                            &nvName);
     goto_if_error(r, "Error: nv read public", error);
 
-    r = esys_GetResourceObject(esys_context, nvHandle_handle, &nvHandleNode);
+    r = esys_GetResourceObject(esys_context, nvHandle, &nvHandleNode);
     goto_if_error(r, "Error: nv get resource object", error);
 
     if (nvName->size != nvHandleNode->rsrc.name.size ||
@@ -143,8 +159,8 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     TPM2B_MAX_NV_BUFFER *nv_test_data;
 
     r = Esys_NV_Read(esys_context,
-                     nvHandle_handle,
-                     nvHandle_handle,
+                     nvHandle,
+                     nvHandle,
 #ifdef TEST_SESSION
                      session,
 #else
@@ -159,7 +175,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     goto_if_error(r, "Error esys nv read", error);
 
     r = Esys_NV_ReadPublic(esys_context,
-                           nvHandle_handle,
+                           nvHandle,
                            ESYS_TR_NONE,
                            ESYS_TR_NONE,
                            ESYS_TR_NONE,
@@ -167,7 +183,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                            &nvName);
     goto_if_error(r, "Error: nv read public", error);
 
-    r = esys_GetResourceObject(esys_context, nvHandle_handle, &nvHandleNode);
+    r = esys_GetResourceObject(esys_context, nvHandle, &nvHandleNode);
     goto_if_error(r, "Error: nv get resource object", error);
 
     if (nvName->size != nvHandleNode->rsrc.name.size ||
@@ -178,7 +194,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
 
     r = Esys_NV_UndefineSpace(esys_context,
                               ESYS_TR_RH_OWNER,
-                              nvHandle_handle,
+                              nvHandle,
 #ifdef TEST_SESSION
                               session,
 #else
@@ -194,8 +210,37 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     goto_if_error(r, "Error: FlushContext", error);
 #endif
 
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return 1;
+
+    if (nvHandle != ESYS_TR_NONE) {
+        if (Esys_NV_UndefineSpace(esys_context,
+                                  ESYS_TR_RH_OWNER,
+                                  nvHandle,
+#ifdef TEST_SESSION
+                                  session,
+#else
+                                  ESYS_TR_PASSWORD,
+#endif
+                                  ESYS_TR_NONE,
+                                  ESYS_TR_NONE) != TSS2_RC_SUCCESS) {
+             LOG_ERROR("Cleanup nvHandle failed.");
+        }
+    }
+
+#ifdef TEST_SESSION
+    if (session != ESYS_TR_NONE) {
+        if (Esys_FlushContext(esys_context, session) != TSS2_RC_SUCCESS) {
+            LOG_ERROR("Cleanup session failed.");
+        }
+    }
+#endif
+
+    return EXIT_FAILURE;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_nv_ram_set_bits(esys_context);
 }

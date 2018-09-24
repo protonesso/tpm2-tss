@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2 */
 /*******************************************************************************
- * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG All
- * rights reserved.
+ * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG
+ * All rights reserved.
  *******************************************************************************/
 
 #define _GNU_SOURCE
@@ -21,24 +21,37 @@
 #define LOGMODULE test
 #include "util/log.h"
 
-/*
- * This test is intended to test the unseal operation for the ESAPI command
- * Unseal.
+/** This test is intended to test the unseal operation for the ESAPI command
+ *  Unseal.
+ *
  * We start by creating a primary key (Esys_CreatePrimary).
  * Based on the primary key a second key with a password and the to be sealed
  * data defined in the sensitive area will be created (Esys_Create).
  * This key will be loaded and the unseal command (Esys_Unseal) will be used
  * to retrieve the sealed data.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_Create() (M)
+ *  - Esys_CreatePrimary() (M)
+ *  - Esys_FlushContext() (M)
+ *  - Esys_Load() (M)
+ *  - Esys_Unseal() (M)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SUCCESS
  */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_unseal_password_auth(ESYS_CONTEXT * esys_context)
 {
 
     /*
      * 1. Create Primary
      */
-    uint32_t r = 0;
+    TSS2_RC r;
+    ESYS_TR primaryHandle = ESYS_TR_NONE;
+    ESYS_TR loadedKeyHandle = ESYS_TR_NONE;
 
     TPM2B_AUTH authValuePrimary = {
         .size = 5,
@@ -84,7 +97,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                     .scheme = TPM2_ALG_NULL
                 },
                 .keyBits = 2048,
-                .exponent = 65537,
+                .exponent = 0,
             },
             .unique.rsa = {
                 .size = 0,
@@ -110,7 +123,6 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     r = Esys_TR_SetAuth(esys_context, ESYS_TR_RH_OWNER, &authValue);
     goto_if_error(r, "Error: TR_SetAuth", error);
 
-    ESYS_TR primaryHandle_handle;
     RSRC_NODE_T *primaryHandle_node;
     TPM2B_PUBLIC *outPublic;
     TPM2B_CREATION_DATA *creationData;
@@ -120,19 +132,19 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     r = Esys_CreatePrimary(esys_context, ESYS_TR_RH_OWNER, ESYS_TR_PASSWORD,
                            ESYS_TR_NONE, ESYS_TR_NONE,
                            &inSensitivePrimary, &inPublic,
-                           &outsideInfo, &creationPCR, &primaryHandle_handle,
+                           &outsideInfo, &creationPCR, &primaryHandle,
                            &outPublic, &creationData, &creationHash,
                            &creationTicket);
     goto_if_error(r, "Error esys create primary", error);
 
-    r = esys_GetResourceObject(esys_context, primaryHandle_handle,
+    r = esys_GetResourceObject(esys_context, primaryHandle,
                                &primaryHandle_node);
     goto_if_error(r, "Error Esys GetResourceObject", error);
 
     LOG_INFO("Created Primary with handle 0x%08x...",
              primaryHandle_node->rsrc.handle);
 
-    r = Esys_TR_SetAuth(esys_context, primaryHandle_handle, &authValuePrimary);
+    r = Esys_TR_SetAuth(esys_context, primaryHandle, &authValuePrimary);
     goto_if_error(r, "Error: TR_SetAuth", error);
 
     /*
@@ -189,7 +201,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                     .scheme = TPM2_ALG_NULL,
                 },
                 .keyBits = 2048,
-                .exponent = 65537
+                .exponent = 0
             },
             .unique.rsa = {
                 .size = 0,
@@ -231,7 +243,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     TPMT_TK_CREATION *creationTicket2;
 
     r = Esys_Create(esys_context,
-                    primaryHandle_handle,
+                    primaryHandle,
                     ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE,
                     &inSensitive2,
                     &inPublic2,
@@ -245,14 +257,12 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
 
     LOG_INFO("\nSecond key created.");
 
-    ESYS_TR loadedKeyHandle;
-
     /*
      * 3. Load second key
      */
 
     r = Esys_Load(esys_context,
-                  primaryHandle_handle,
+                  primaryHandle,
                   ESYS_TR_PASSWORD,
                   ESYS_TR_NONE,
                   ESYS_TR_NONE, outPrivate2, outPublic2, &loadedKeyHandle);
@@ -285,14 +295,34 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
      * 5. Flush Context
      */
 
-    r = Esys_FlushContext(esys_context, primaryHandle_handle);
+    r = Esys_FlushContext(esys_context, primaryHandle);
     goto_if_error(r, "Error during FlushContext", error);
+
+    primaryHandle = ESYS_TR_NONE;
 
     r = Esys_FlushContext(esys_context, loadedKeyHandle);
     goto_if_error(r, "Error during FlushContext", error);
 
-    return 0;
+    return EXIT_SUCCESS;
 
     error:
-        return 1;
+
+    if (loadedKeyHandle != ESYS_TR_NONE) {
+        if (Esys_FlushContext(esys_context, loadedKeyHandle) != TSS2_RC_SUCCESS) {
+            LOG_ERROR("Cleanup loadedKeyHandle failed.");
+        }
+    }
+
+    if (primaryHandle != ESYS_TR_NONE) {
+        if (Esys_FlushContext(esys_context, primaryHandle) != TSS2_RC_SUCCESS) {
+            LOG_ERROR("Cleanup primaryHandle failed.");
+        }
+    }
+
+    return EXIT_FAILURE;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_unseal_password_auth(esys_context);
 }

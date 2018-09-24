@@ -4,6 +4,8 @@
  * All rights reserved.
  *******************************************************************************/
 
+#include <stdlib.h>
+
 #include "tss2_esys.h"
 #include "tss2_mu.h"
 
@@ -11,14 +13,27 @@
 #define LOGMODULE test
 #include "util/log.h"
 
-/*
- * This test is intended to test the ESAPI policy authorization.
+/** This test is intended to test the ESAPI policy authorization.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_CreatePrimary() (M)
+ *  - Esys_FlushContext() (M)
+ *  - Esys_PolicyAuthorize() (M)
+ *  - Esys_PolicyGetDigest() (M)
+ *  - Esys_ReadPublic() (M)
+ *  - Esys_StartAuthSession() (M)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SUCCESS
  */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_policy_authorize(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
+    ESYS_TR primaryHandle = ESYS_TR_NONE;
+    ESYS_TR sessionTrial = ESYS_TR_NONE;
 
     /*
      * 1. Create Primary. This primary will be used for PolicyAuthorize.
@@ -65,7 +80,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                       }
                   },
                  .keyBits = 2048,
-                 .exponent = 65537,
+                 .exponent = 0,
              },
             .unique.rsa = {
                  .size = 0,
@@ -92,7 +107,6 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     r = Esys_TR_SetAuth(esys_context, ESYS_TR_RH_OWNER, &authValue);
     goto_if_error(r, "Error: TR_SetAuth", error);
 
-    ESYS_TR primaryHandle_handle;
     TPM2B_PUBLIC *outPublic;
     TPM2B_CREATION_DATA *creationData;
     TPM2B_DIGEST *creationHash;
@@ -101,7 +115,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     r = Esys_CreatePrimary(esys_context, ESYS_TR_RH_OWNER, ESYS_TR_PASSWORD,
                            ESYS_TR_NONE, ESYS_TR_NONE,
                            &inSensitivePrimary, &inPublic,
-                           &outsideInfo, &creationPCR, &primaryHandle_handle,
+                           &outsideInfo, &creationPCR, &primaryHandle,
                            &outPublic, &creationData, &creationHash,
                            &creationTicket);
     goto_if_error(r, "Error esys create primary", error);
@@ -110,7 +124,6 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
      * 2. Create a trial policy with PolicyAuthorized. The name primary key
      *    will be passed and the primary key will be used to sign policies.
      */
-    ESYS_TR sessionTrial;
     TPMT_SYM_DEF symmetricTrial = {.algorithm = TPM2_ALG_AES,
                                    .keyBits = {.aes = 128},
                                    .mode = {.aes = TPM2_ALG_CFB}
@@ -141,7 +154,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     };
 
     r = Esys_ReadPublic(esys_context,
-                        primaryHandle_handle,
+                        primaryHandle,
                         ESYS_TR_NONE,
                         ESYS_TR_NONE,
                         ESYS_TR_NONE,
@@ -176,11 +189,29 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     goto_if_error(r, "Error: FlushContext", error);
 
 
-    r = Esys_FlushContext(esys_context, primaryHandle_handle);
+    r = Esys_FlushContext(esys_context, primaryHandle);
     goto_if_error(r, "Error: FlushContext", error);
 
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return 1;
+
+    if (sessionTrial != ESYS_TR_NONE) {
+        if (Esys_FlushContext(esys_context, sessionTrial) != TSS2_RC_SUCCESS) {
+            LOG_ERROR("Cleanup sessionTrial failed.");
+        }
+    }
+
+    if (primaryHandle != ESYS_TR_NONE) {
+        if (Esys_FlushContext(esys_context, primaryHandle) != TSS2_RC_SUCCESS) {
+            LOG_ERROR("Cleanup primaryHandle failed.");
+        }
+    }
+
+    return EXIT_FAILURE;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_policy_authorize(esys_context);
 }

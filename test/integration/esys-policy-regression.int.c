@@ -8,6 +8,7 @@
 #include "tss2_mu.h"
 
 #include "esys_iutil.h"
+#include "test-esapi.h"
 #define LOGMODULE test
 #include "util/log.h"
 
@@ -15,27 +16,21 @@
 #define NOT_FLUSH false
 
 /*
- * This test is intended to test the ESAPI policy commands, not tested
- * in other test cases. When possoble the commands are tested with a
- * trial session and the policy digest is compared with the expected digest.
- */
-
-/*
  * Function to compare policy digest with expected digest.
  * The digest is computed with Esys_PolicyGetDigest.
  */
 bool
 cmp_policy_digest(ESYS_CONTEXT * esys_context,
-                  ESYS_TR session,
+                  ESYS_TR * session,
                   TPM2B_DIGEST * expected_digest,
                   char *comment, bool flush_session)
 {
 
-    uint32_t r = 0;
+    TSS2_RC r;
     TPM2B_DIGEST *policyDigest;
 
     r = Esys_PolicyGetDigest(esys_context,
-                             session,
+                             *session,
                              ESYS_TR_NONE,
                              ESYS_TR_NONE, ESYS_TR_NONE, &policyDigest);
     goto_if_error(r, "Error: PolicyGetDigest", error);
@@ -53,8 +48,9 @@ cmp_policy_digest(ESYS_CONTEXT * esys_context,
     }
     free(policyDigest);
     if (flush_session) {
-        r = Esys_FlushContext(esys_context, session);
+        r = Esys_FlushContext(esys_context, *session);
         goto_if_error(r, "Error: PolicyGetDigest", error);
+        *session = ESYS_TR_NONE;
     }
 
     return true;
@@ -63,13 +59,44 @@ cmp_policy_digest(ESYS_CONTEXT * esys_context,
     return false;
 }
 
+/** This test is intended to test the ESAPI policy commands, not tested
+ *  in other test cases.
+ *  When possoble the commands are tested with a
+ * trial session and the policy digest is compared with the expected digest.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_FlushContext() (M)
+ *  - Esys_NV_DefineSpace() (M)
+ *  - Esys_NV_UndefineSpace() (M)
+ *  - Esys_PolicyCounterTimer() (M)
+ *  - Esys_PolicyDuplicationSelect() (M)
+ *  - Esys_PolicyGetDigest() (M)
+ *  - Esys_PolicyNV() (M)
+ *  - Esys_PolicyNameHash() (M)
+ *  - Esys_PolicyNvWritten() (M)
+ *  - Esys_PolicyOR() (M)
+ *  - Esys_PolicyPCR() (M)
+ *  - Esys_PolicyPhysicalPresence() (O)
+ *  - Esys_PolicyRestart() (M)
+ *  - Esys_SetPrimaryPolicy() (M)
+ *  - Esys_StartAuthSession() (M)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SKIP
+ * @retval EXIT_SUCCESS
+ */
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_policy_regression(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
+    int failure_return = EXIT_FAILURE;
+    ESYS_TR nvHandle = ESYS_TR_NONE;
+    ESYS_TR sessionTrialNV = ESYS_TR_NONE;
+    ESYS_TR sessionTrialPCR = ESYS_TR_NONE;
 
     /* Dummy parameters for trial sessoin  */
-    ESYS_TR sessionTrial;
+    ESYS_TR sessionTrial = ESYS_TR_NONE;
     TPMT_SYM_DEF symmetricTrial = {.algorithm = TPM2_ALG_AES,
         .keyBits = {.aes = 128},
         .mode = {.aes = TPM2_ALG_CFB}
@@ -91,7 +118,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     goto_if_error(r, "Error: During initialization of policy trial session",
                   error);
 
-    ESYS_TR sessionTrialPCR = sessionTrial;
+    sessionTrialPCR = sessionTrial;
     TPML_PCR_SELECTION pcrSelection = {
         .count = 1,
         .pcrSelections = {
@@ -121,12 +148,11 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                    0x60, 0x43, 0x34, 0x6f, 0x9f, 0x37, 0x21, 0x04, 0x76, 0x8e},
     };
 
-    if (!cmp_policy_digest(esys_context, sessionTrial, &expectedPolicyPCR,
+    if (!cmp_policy_digest(esys_context, &sessionTrial, &expectedPolicyPCR,
                            "PCR", NOT_FLUSH))
         goto error;
 
     /* Create valid NV handle */
-    ESYS_TR nvHandle;
     TPM2B_AUTH auth = {.size = 20,
         .buffer = {10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
                    20, 21, 22, 23, 24, 25, 26, 27, 28, 29}
@@ -171,7 +197,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     goto_if_error(r, "Error: During initialization of policy trial session",
                   error);
 
-    ESYS_TR sessionTrialNV = sessionTrial;
+    sessionTrialNV = sessionTrial;
     UINT16 offset = 0;
     TPM2_EO operation = TPM2_EO_EQ;
     TPM2B_OPERAND operandB = {
@@ -193,24 +219,9 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                    0xc0, 0x20, 0x86, 0x81, 0xca, 0xe9, 0x94, 0x23, 0x09, 0x24}
     };
 
-    if (!cmp_policy_digest(esys_context, sessionTrial, &expectedPolicyNV,
+    if (!cmp_policy_digest(esys_context, &sessionTrial, &expectedPolicyNV,
                            "NV", NOT_FLUSH))
         goto error;
-
-    /*
-     * Test PolicyAuthorizeNV
-     */
-    r = Esys_PolicyAuthorizeNV(esys_context,
-                               ESYS_TR_RH_OWNER,
-                               nvHandle,
-                               sessionTrial,
-                               ESYS_TR_PASSWORD,
-                               ESYS_TR_NONE, ESYS_TR_NONE);
-    if (r == TPM2_RC_COMMAND_CODE) {
-        LOG_INFO("Command TPM2_PolicyAuthorizeNV  not supported by TPM.");
-    } else {
-        goto_if_error(r, "Error: PolicyAuthorizeNV", error);
-    }
 
     /*
      * Test PolicyOR
@@ -243,15 +254,17 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                    0xeb, 0x29, 0x54, 0xde, 0x66, 0x37, 0x06, 0x2f, 0xd8, 0x70}
     };
 
-    if (!cmp_policy_digest(esys_context, sessionTrial, &expectedPolicyOR,
+    if (!cmp_policy_digest(esys_context, &sessionTrial, &expectedPolicyOR,
                            "OR", FLUSH))
         goto error;
 
     r = Esys_FlushContext(esys_context, sessionTrialPCR);
     goto_if_error(r, "Error: FlushContext", error);
+    sessionTrialPCR = ESYS_TR_NONE;
 
     r = Esys_FlushContext(esys_context, sessionTrialNV);
     goto_if_error(r, "Error: FlushContext", error);
+    sessionTrial = ESYS_TR_NONE;
 
     /*
      * Test PolicyCounterTimer
@@ -278,7 +291,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     };
 
     if (!cmp_policy_digest
-        (esys_context, sessionTrial, &expectedPolicyCounterTimer,
+        (esys_context, &sessionTrial, &expectedPolicyCounterTimer,
          "CounterTimter", NOT_FLUSH))
         goto error;
 
@@ -295,7 +308,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         .buffer = {0}
     };
 
-    if (!cmp_policy_digest(esys_context, sessionTrial, &expectedPolicyRestart,
+    if (!cmp_policy_digest(esys_context, &sessionTrial, &expectedPolicyRestart,
                            "Restart", FLUSH))
         goto error;
 
@@ -328,35 +341,8 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                    0x7b, 0x2e, 0x55, 0x7e, 0x74, 0x7d, 0x44, 0x39, 0x68, 0x7f}
     };
 
-    if (!cmp_policy_digest(esys_context, sessionTrial, &expectedPolicyNameHash,
+    if (!cmp_policy_digest(esys_context, &sessionTrial, &expectedPolicyNameHash,
                            "NameHash", FLUSH))
-        goto error;
-
-    /*
-     * Test PolicyPhysicalPresence
-     */
-    r = Esys_StartAuthSession(esys_context, ESYS_TR_NONE, ESYS_TR_NONE,
-                              ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
-                              &nonceCallerTrial,
-                              TPM2_SE_TRIAL, &symmetricTrial, TPM2_ALG_SHA1,
-                              &sessionTrial);
-    goto_if_error(r, "Error: During initialization of policy trial session",
-                  error);
-
-    r = Esys_PolicyPhysicalPresence(esys_context,
-                                    sessionTrial,
-                                    ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE);
-    goto_if_error(r, "Error: PolicyPhysicalPresence", error);
-
-    TPM2B_DIGEST expectedPolicyPhysicalPresence = {
-        .size = 20,
-        .buffer = {0x9a, 0xcb, 0x06, 0x39, 0x5f, 0x83, 0x1f, 0x88, 0xe8, 0x9e,
-                   0xea, 0xc2, 0x94, 0x42, 0xcb, 0x0e, 0xbe, 0x94, 0x85, 0xab}
-    };
-
-    if (!cmp_policy_digest
-        (esys_context, sessionTrial, &expectedPolicyPhysicalPresence,
-         "PhysicalPresence", FLUSH))
         goto error;
 
     /*
@@ -396,7 +382,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     };
 
     if (!cmp_policy_digest
-        (esys_context, sessionTrial, &expectedPolicyDuplicationSelect,
+        (esys_context, &sessionTrial, &expectedPolicyDuplicationSelect,
          "PolicyDuplicationSelect", FLUSH))
         goto error;
 
@@ -424,50 +410,23 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                    0xaa, 0xd4, 0x03, 0x69, 0xb1, 0xe2, 0x5e, 0x46, 0x28, 0x73}
     };
 
-    if (!cmp_policy_digest(esys_context, sessionTrial, &expectedPolicyNvWritten,
+    if (!cmp_policy_digest(esys_context, &sessionTrial, &expectedPolicyNvWritten,
                            "NvWritten", FLUSH))
         goto error;
 
     /*
-     * Test PolicyTemplate
+     * Space not needed for further tests.
      */
-    r = Esys_StartAuthSession(esys_context, ESYS_TR_NONE, ESYS_TR_NONE,
-                              ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
-                              &nonceCallerTrial,
-                              TPM2_SE_TRIAL, &symmetricTrial, TPM2_ALG_SHA1,
-                              &sessionTrial);
-    goto_if_error(r, "Error: During initialization of policy trial session",
-                  error);
 
-    TPM2B_DIGEST templateHash = {
-        .size = 20,
-        .buffer = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-                   11, 12, 13, 14, 15, 16, 17, 18, 19, 20}
-    };
-
-    r = Esys_PolicyTemplate(esys_context,
-                            sessionTrial,
-                            ESYS_TR_NONE,
-                            ESYS_TR_NONE, ESYS_TR_NONE, &templateHash);
-    if (r == TPM2_RC_COMMAND_CODE) {
-        LOG_INFO("Command TPM2_PolicyTemplate  not supported by TPM.");
-        r = Esys_FlushContext(esys_context, sessionTrial);
-        goto_if_error(r, "Error: FlushContext", error);
-    } else {
-        goto_if_error(r, "Error: PolicyTemplate", error);
-
-        TPM2B_DIGEST expectedPolicyTemplate = {
-            .size = 20,
-            .buffer =
-                {0xf6, 0x6d, 0x2a, 0x9c, 0x6e, 0xa8, 0xdf, 0x1a, 0x49, 0x3c,
-                 0x42, 0xcc, 0xac, 0x6e, 0x3d, 0x08, 0xc0, 0x84, 0xcf, 0x73}
-        };
-
-        if (!cmp_policy_digest
-            (esys_context, sessionTrial, &expectedPolicyTemplate, "Template",
-             FLUSH))
-            goto error;
-    }
+    r = Esys_NV_UndefineSpace(esys_context,
+                              ESYS_TR_RH_OWNER,
+                              nvHandle,
+                              ESYS_TR_PASSWORD,
+                              ESYS_TR_NONE,
+                              ESYS_TR_NONE
+                              );
+    goto_if_error(r, "Error: NV_UndefineSpace", error);
+    nvHandle = ESYS_TR_NONE;
 
     /*
      * Test PolicySetPrimaryPolicy
@@ -485,14 +444,46 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                               ESYS_TR_NONE, ESYS_TR_NONE,
                               &authPolicy,
                               TPM2_ALG_SHA1);
-    if (r == TPM2_RC_COMMAND_CODE) {
-        LOG_INFO("Command TPM2_PolicyAuthorizeNV  not supported by TPM.");
+
+    if ((r == TPM2_RC_COMMAND_CODE) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_RC_LAYER)) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_TPM_RC_LAYER))) {
+        LOG_WARNING("Command TPM2_SetPrimaryPolicy  not supported by TPM.");
     } else {
         goto_if_error(r, "Error: SetPrimaryPolicy", error);
     }
 
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return 1;
+
+    if (sessionTrial != ESYS_TR_NONE) {
+        if (Esys_FlushContext(esys_context, sessionTrial) != TSS2_RC_SUCCESS) {
+            LOG_ERROR("Cleanup sessionTrial failed.");
+        }
+    }
+
+    if (sessionTrialPCR != ESYS_TR_NONE) {
+        if (Esys_FlushContext(esys_context, sessionTrialPCR) != TSS2_RC_SUCCESS) {
+            LOG_ERROR("Cleanup sessionTrialPCR failed.");
+        }
+    }
+
+    if (nvHandle != ESYS_TR_NONE) {
+        if (Esys_NV_UndefineSpace(esys_context,
+                                  ESYS_TR_RH_OWNER,
+                                  nvHandle,
+                                  ESYS_TR_PASSWORD,
+                                  ESYS_TR_NONE,
+                                  ESYS_TR_NONE) != TSS2_RC_SUCCESS) {
+             LOG_ERROR("Cleanup nvHandle failed.");
+        }
+    }
+
+    return failure_return;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_policy_regression(esys_context);
 }

@@ -34,14 +34,14 @@ static void store_input_parameters (
  * parameters is allocated by the function implementation.
  *
  * @param[in,out] esysContext The ESYS_CONTEXT.
- * @param[in]  authHandle Handle indicating the source of the authorization value.
+ * @param[in]  authHandle Handle indicating the source of the authorization
+ *             value.
  * @param[in]  nvIndex The NV Index of the area to read.
  * @param[in]  policySession Handle for the policy session being extended.
  * @param[in]  shandle1 Session handle for authorization of authHandle
  * @param[in]  shandle2 Second session handle.
  * @param[in]  shandle3 Third session handle.
- * @retval TSS2_RC_SUCCESS on success
- * @retval ESYS_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_ESYS_RC_BAD_REFERENCE if the esysContext or required input
  *         pointers or required output handle references are NULL.
  * @retval TSS2_ESYS_RC_BAD_CONTEXT: if esysContext corruption is detected.
@@ -52,13 +52,15 @@ static void store_input_parameters (
  * @retval TSS2_ESYS_RC_INSUFFICIENT_RESPONSE: if the TPM's response does not
  *          at least contain the tag, response length, and response code.
  * @retval TSS2_ESYS_RC_MALFORMED_RESPONSE: if the TPM's response is corrupted.
+ * @retval TSS2_ESYS_RC_RSP_AUTH_FAILED: if the response HMAC from the TPM
+           did not verify.
  * @retval TSS2_ESYS_RC_MULTIPLE_DECRYPT_SESSIONS: if more than one session has
  *         the 'decrypt' attribute bit set.
  * @retval TSS2_ESYS_RC_MULTIPLE_ENCRYPT_SESSIONS: if more than one session has
  *         the 'encrypt' attribute bit set.
- * @retval TSS2_ESYS_RC_BAD_TR: if any of the ESYS_TR objects are unknown to the
- *         ESYS_CONTEXT or are of the wrong type or if required ESYS_TR objects
- *         are ESYS_TR_NONE.
+ * @retval TSS2_ESYS_RC_BAD_TR: if any of the ESYS_TR objects are unknown
+ *         to the ESYS_CONTEXT or are of the wrong type or if required
+ *         ESYS_TR objects are ESYS_TR_NONE.
  * @retval TSS2_ESYS_RC_NO_DECRYPT_PARAM: if one of the sessions has the
  *         'decrypt' attribute set and the command does not support encryption
  *         of the first command parameter.
@@ -80,13 +82,9 @@ Esys_PolicyAuthorizeNV(
 {
     TSS2_RC r;
 
-    r = Esys_PolicyAuthorizeNV_Async(esysContext,
-                authHandle,
-                nvIndex,
-                policySession,
-                shandle1,
-                shandle2,
-                shandle3);
+    r = Esys_PolicyAuthorizeNV_Async(esysContext, authHandle, nvIndex,
+                                     policySession, shandle1, shandle2,
+                                     shandle3);
     return_if_error(r, "Error in async function");
 
     /* Set the timeout to indefinite for now, since we want _Finish to block */
@@ -123,7 +121,8 @@ Esys_PolicyAuthorizeNV(
  * In order to retrieve the TPM's response call Esys_PolicyAuthorizeNV_Finish.
  *
  * @param[in,out] esysContext The ESYS_CONTEXT.
- * @param[in]  authHandle Handle indicating the source of the authorization value.
+ * @param[in]  authHandle Handle indicating the source of the authorization
+ *             value.
  * @param[in]  nvIndex The NV Index of the area to read.
  * @param[in]  policySession Handle for the policy session being extended.
  * @param[in]  shandle1 Session handle for authorization of authHandle
@@ -141,9 +140,9 @@ Esys_PolicyAuthorizeNV(
  *         the 'decrypt' attribute bit set.
  * @retval TSS2_ESYS_RC_MULTIPLE_ENCRYPT_SESSIONS: if more than one session has
  *         the 'encrypt' attribute bit set.
- * @retval TSS2_ESYS_RC_BAD_TR: if any of the ESYS_TR objects are unknown to the
-           ESYS_CONTEXT or are of the wrong type or if required ESYS_TR objects
-           are ESYS_TR_NONE.
+ * @retval TSS2_ESYS_RC_BAD_TR: if any of the ESYS_TR objects are unknown
+ *         to the ESYS_CONTEXT or are of the wrong type or if required
+ *         ESYS_TR objects are ESYS_TR_NONE.
  * @retval TSS2_ESYS_RC_NO_DECRYPT_PARAM: if one of the sessions has the
  *         'decrypt' attribute set and the command does not support encryption
  *         of the first command parameter.
@@ -195,9 +194,14 @@ Esys_PolicyAuthorizeNV_Async(
 
     /* Initial invocation of SAPI to prepare the command buffer with parameters */
     r = Tss2_Sys_PolicyAuthorizeNV_Prepare(esysContext->sys,
-                (authHandleNode == NULL) ? TPM2_RH_NULL : authHandleNode->rsrc.handle,
-                (nvIndexNode == NULL) ? TPM2_RH_NULL : nvIndexNode->rsrc.handle,
-                (policySessionNode == NULL) ? TPM2_RH_NULL : policySessionNode->rsrc.handle);
+                                           (authHandleNode == NULL)
+                                            ? TPM2_RH_NULL
+                                            : authHandleNode->rsrc.handle,
+                                           (nvIndexNode == NULL) ? TPM2_RH_NULL
+                                            : nvIndexNode->rsrc.handle,
+                                           (policySessionNode == NULL)
+                                            ? TPM2_RH_NULL
+                                            : policySessionNode->rsrc.handle);
     return_state_if_error(r, _ESYS_STATE_INIT, "SAPI Prepare returned error.");
 
     /* Calculate the cpHash Values */
@@ -210,14 +214,17 @@ Esys_PolicyAuthorizeNV_Async(
 
     /* Generate the auth values and set them in the SAPI command buffer */
     r = iesys_gen_auths(esysContext, authHandleNode, nvIndexNode, policySessionNode, &auths);
-    return_state_if_error(r, _ESYS_STATE_INIT, "Error in computation of auth values");
+    return_state_if_error(r, _ESYS_STATE_INIT,
+                          "Error in computation of auth values");
+
     esysContext->authsCount = auths.count;
     r = Tss2_Sys_SetCmdAuths(esysContext->sys, &auths);
     return_state_if_error(r, _ESYS_STATE_INIT, "SAPI error on SetCmdAuths");
 
     /* Trigger execution and finish the async invocation */
     r = Tss2_Sys_ExecuteAsync(esysContext->sys);
-    return_state_if_error(r, _ESYS_STATE_INTERNALERROR, "Finish (Execute Async)");
+    return_state_if_error(r, _ESYS_STATE_INTERNALERROR,
+                          "Finish (Execute Async)");
 
     esysContext->state = _ESYS_STATE_SENT;
 
@@ -244,7 +251,9 @@ Esys_PolicyAuthorizeNV_Async(
  * @retval TSS2_ESYS_RC_TRY_AGAIN: if the timeout counter expires before the
  *         TPM response is received.
  * @retval TSS2_ESYS_RC_INSUFFICIENT_RESPONSE: if the TPM's response does not
- *          at least contain the tag, response length, and response code.
+ *         at least contain the tag, response length, and response code.
+ * @retval TSS2_ESYS_RC_RSP_AUTH_FAILED: if the response HMAC from the TPM did
+ *         not verify.
  * @retval TSS2_ESYS_RC_MALFORMED_RESPONSE: if the TPM's response is corrupted.
  * @retval TSS2_RCs produced by lower layers of the software stack may be
  *         returned to the caller unaltered unless handled internally.
@@ -288,12 +297,12 @@ Esys_PolicyAuthorizeNV_Finish(
         }
         esysContext->state = _ESYS_STATE_RESUBMISSION;
         r = Esys_PolicyAuthorizeNV_Async(esysContext,
-                esysContext->in.PolicyAuthorizeNV.authHandle,
-                esysContext->in.PolicyAuthorizeNV.nvIndex,
-                esysContext->in.PolicyAuthorizeNV.policySession,
-                esysContext->session_type[0],
-                esysContext->session_type[1],
-                esysContext->session_type[2]);
+                                         esysContext->in.PolicyAuthorizeNV.authHandle,
+                                         esysContext->in.PolicyAuthorizeNV.nvIndex,
+                                         esysContext->in.PolicyAuthorizeNV.policySession,
+                                         esysContext->session_type[0],
+                                         esysContext->session_type[1],
+                                         esysContext->session_type[2]);
         if (r != TSS2_RC_SUCCESS) {
             LOG_WARNING("Error attempting to resubmit");
             /* We do not set esysContext->state here but inherit the most recent
@@ -320,14 +329,17 @@ Esys_PolicyAuthorizeNV_Finish(
      * parameter decryption have to be done.
      */
     r = iesys_check_response(esysContext);
-    return_state_if_error(r, _ESYS_STATE_INTERNALERROR, "Error: check response");
+    return_state_if_error(r, _ESYS_STATE_INTERNALERROR,
+                          "Error: check response");
+
     /*
      * After the verification of the response we call the complete function
      * to deliver the result.
      */
     r = Tss2_Sys_PolicyAuthorizeNV_Complete(esysContext->sys);
-    return_state_if_error(r, _ESYS_STATE_INTERNALERROR, "Received error from SAPI"
-                        " unmarshaling" );
+    return_state_if_error(r, _ESYS_STATE_INTERNALERROR,
+                          "Received error from SAPI unmarshaling" );
+
     esysContext->state = _ESYS_STATE_INIT;
 
     return TSS2_RC_SUCCESS;

@@ -1,4 +1,4 @@
-#;**********************************************************************;
+;**********************************************************************;
 # Copyright (c) 2015 - 2018 Intel Corporation
 # Copyright (c) 2018 Fraunhofer SIT sponsored by Infineon Technologies AG
 # All rights reserved.
@@ -26,7 +26,7 @@
 # THE POSSIBILITY OF SUCH DAMAGE.
 #;**********************************************************************;
 AC_INIT([tpm2-tss],
-        [2.0.1],
+        [2.1.0_rc0],
         [https://github.com/tpm2-software/tpm2-tss/issues],
         [],
         [https://github.com/tpm2-software/tpm2-tss])
@@ -63,22 +63,58 @@ AC_ARG_ENABLE([esapi],
                             [build the esapi layer (default is yes)])],
             [enable_esapi=$enableval],
             [enable_esapi=yes])
-AS_IF([test "x$enable_esapi" != xno],
+
+AM_CONDITIONAL(ESAPI, test "x$enable_esapi" = "xyes")
+
+AC_ARG_ENABLE([tcti-device-async],
+    AS_HELP_STRING([--enable-tcti-device-async],
+	           [Enable asynchronus operation on TCTI device
+		    (note: This needs to be supported by the kernel driver). default is no]),
+    [enable_tcti_device_async=$enableval],
+    [enable_tcti_device_async=no])
+AS_IF([test "x$enable_tcti_device_async" = "xyes"],
+	AC_DEFINE([TCTI_ASYNC],[1]))
+
+AC_ARG_WITH([crypto],
+            [AS_HELP_STRING([--with-crypto={gcrypt,ossl}],
+                            [sets the ESAPI crypto backend (default is gcrypt)])],
+            [],
+            [with_crypto=gcrypt])
+
+AM_CONDITIONAL(ESYS_OSSL, test "x$with_crypto" = "xossl")
+AM_CONDITIONAL(ESYS_GCRYPT, test "x$with_crypto" = "xgcrypt")
+
+AS_IF([test "x$with_crypto" != "xgcrypt"],
+    AS_IF([test "x$with_crypto" != "xossl"],
+          AC_MSG_ERROR([Bad value for --with-crypto $with_crypto])))
+
+AS_IF([test "x$enable_esapi" != xno -a "x$with_crypto" = "xgcrypt"],
       [AC_CHECK_HEADER([gcrypt.h],
                        [],
                        [AC_MSG_ERROR([Missing required header: gcrypt.h.])])])
-AS_IF([test "x$enable_esapi" != xno],
+
+AS_IF([test "x$enable_esapi" != xno -a "x$with_cryptor" = "xgcrypt"],
       [AC_CHECK_LIB([gcrypt],
                     [gcry_mac_open],
                     [],
                     [AC_MSG_ERROR([Missing required library: gcrypt.])])])
-AM_CONDITIONAL([ESAPI], [test "x$enable_esapi" != xno])
+
+AS_IF([test "x$enable_esapi" != xno -a "x$with_crypto" = "xossl"],
+      [AC_CHECK_HEADER([openssl/ssl.h],
+                       [],
+                       [AC_MSG_ERROR([Missing required header: openssl/ssl.h.])])])
+
+AS_IF([test "x$enable_esapi" != xno -a "x$with_crypto" = "xossl"],
+    AC_CHECK_LIB(ssl, OPENSSL_init_ssl, [FOUND_SSL_LIB="yes"]))
+
+AS_IF([test "x$enable_esapi" != xno -a "x$with_crypto" = "xossl"],
+    AC_CHECK_LIB(crypto, CRYPTO_new_ex_data, [], [AC_MSG_ERROR([library 'crypto' is required for OpenSSL])]))
 
 AC_ARG_WITH([tctidefaultmodule],
             [AS_HELP_STRING([--with-tctidefaultmodule],
 [The default TCTI module for ESAPI. (Default: libtss2-tcti-default.so])],
             [AC_DEFINE_UNQUOTED([ESYS_TCTI_DEFAULT_MODULE],
-                                [$with_tctidefaultmodule],
+                                ["$with_tctidefaultmodule"],
                                 ["The default TCTI library file"])],
             [])
 
@@ -86,7 +122,7 @@ AC_ARG_WITH([tctidefaultconfig],
             [AS_HELP_STRING([--with-tctidefaultconfig],
                             [The default tcti module's configuration.])],
             [AC_DEFINE_UNQUOTED([ESYS_TCTI_DEFAULT_CONFIG],
-                                [$with_tctidefaultconfig],
+                                ["$with_tctidefaultconfig"],
                                 ["The default TCTIs configuration string"])],
             [])
 
@@ -205,6 +241,44 @@ AC_SUBST([PATH])
 #   https://gcc.gnu.org/bugzilla/show_bug.cgi?id=53119
 AX_ADD_COMPILER_FLAG([-Wno-missing-braces])
 
+dnl ---------  Physical TPM device -----------------------
+
+AC_ARG_WITH([ptpm],
+            [AS_HELP_STRING([--with-ptpm=<device>],[TPM device])],
+            [AS_IF([test \( -w "$with_ptpm" \)  -a \( -r "$with_ptpm" \)],
+                   [AC_MSG_RESULT([success])
+                    AC_SUBST([PTPM],[$with_ptpm])
+                    AX_NORMALIZE_PATH([with_ptpm])
+                    with_ptpm_set=yes],
+                   [AC_MSG_ERROR([TPM device provided does not exist or is not writable])])],
+            [with_ptpm_set=no])
+AM_CONDITIONAL([PTPM],[test "x$with_ptpm_set" = "xyes"])
+
+AC_ARG_WITH([ptpmtests],
+            [AS_HELP_STRING([--with-ptpmtests=<case>],[Comma-separated values of possible tests: destructive,mandatory,optional] default is mandatory)],
+            [AS_IF([test "x" ==  x$(echo $with_ptpmtests | sed 's/destructive//g'  | sed 's/mandatory//g'  | sed 's/optional//g' | sed 's/,//g') ],
+                   [AC_MSG_RESULT([success])
+                    with_ptpmtests_set=yes],
+                   [AC_MSG_ERROR([Illegal test type for pTPM tests.])])],
+            [with_ptpmtests="mandatory"])
+
+if echo $with_ptpmtests | grep destructive > /dev/null; then
+    enable_ptpm_destructive="yes"
+fi
+AM_CONDITIONAL([PTPMDESTRUCTIVE],[test "x$enable_ptpm_destructive" = "xyes"])
+
+if echo $with_ptpmtests | grep optional > /dev/null; then
+    enable_ptpm_optional="yes"
+fi
+AM_CONDITIONAL([PTPMOPTIONAL],[test "x$enable_ptpm_optional" = "xyes"])
+
+if echo $with_ptpmtests | grep mandatory > /dev/null; then
+    enable_ptpm_mandatory="yes"
+fi
+AM_CONDITIONAL([PTPMMANDATORY],[test "x$enable_ptpm_mandatory" = "xyes"])
+
+AM_CONDITIONAL([TESTPTPM],[test "x$with_ptpm_set" = "xyes" -a "x$with_ptpm_set" = "xyes"])
+
 dnl --------- Doxy Gen -----------------------
 DX_DOXYGEN_FEATURE(ON)
 DX_DOT_FEATURE(OFF)
@@ -236,5 +310,5 @@ AC_MSG_RESULT([
     debug:              $enable_debug
     maxloglevel:        $with_maxloglevel
     doxygen:            $DX_FLAG_doc $enable_doxygen_doc
+    tcti-device-async:  $enable_tcti_device_async
 ])
-    

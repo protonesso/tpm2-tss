@@ -57,8 +57,8 @@ typedef uint32_t ESYS_TR;
 #define ESYS_TR_RH_ENDORSEMENT 0x10BU
 #define ESYS_TR_RH_PLATFORM    0x10CU
 #define ESYS_TR_RH_PLATFORM_NV 0x10DU
-#define ESYS_TR_RH_AUTH_00     0x110U
-#define ESYS_TR_RH_AUTH_FF     0x20FU
+#define ESYS_TR_RH_AUTH_FIRST  0x110U
+#define ESYS_TR_RH_AUTH(x) (ESYS_TR_RH_AUTH_FIRST + (ESYS_TR)(x))
 
 #define ESYS_TR_MIN_OBJECT 0x1000U
 
@@ -3219,6 +3219,13 @@ TSS2_RC
 Esys_Vendor_TCG_Test_Finish(
     ESYS_CONTEXT *esysContext,
     TPM2B_DATA **outputData);
+
+/*
+ * TPM 2.0 ESAPI Helper Functions
+ */
+void
+Esys_Free(
+    void *__ptr);
 
 #ifdef __cplusplus
 }

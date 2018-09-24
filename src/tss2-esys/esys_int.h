@@ -53,8 +53,6 @@ typedef struct {
     TPMI_ALG_HASH authHash;
     TPM2B_NONCE *nonceCaller;
     TPM2B_NONCE nonceCallerData;
-    TPM2B_ENCRYPTED_SECRET *encryptedSalt;
-    TPM2B_ENCRYPTED_SECRET encryptedSaltData;
     TPMT_SYM_DEF *symmetric;
     TPMT_SYM_DEF symmetricData;
 } StartAuthSession_IN;
@@ -970,6 +968,8 @@ struct ESYS_CONTEXT {
     TSS2_TCTI_CONTEXT *tcti_app_param;/**< The TCTI context provided by the
                                            application during Esys_Initialize()
                                            to be returned from Esys_GetTcti().*/
+    void *dlhandle;              /**< The handle of dlopen if the tcti was
+                                      automatically loaded. */
 };
 
 /** The number of authomatic resubmissions.
@@ -981,7 +981,11 @@ struct ESYS_CONTEXT {
 
 /** Makro testing parameters against null.
  */
-#define _ESYS_ASSERT_NON_NULL(x)     if (x == NULL) {         LOG_ERROR(str(x) " == NULL.");         return TSS2_ESYS_RC_BAD_REFERENCE;     }
+#define _ESYS_ASSERT_NON_NULL(x) \
+    if (x == NULL) { \
+        LOG_ERROR(str(x) " == NULL."); \
+        return TSS2_ESYS_RC_BAD_REFERENCE; \
+    }
 
 #ifdef __cplusplus
 }

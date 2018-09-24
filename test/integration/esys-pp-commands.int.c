@@ -4,21 +4,35 @@
  * All rights reserved.
  *******************************************************************************/
 
+#include <stdlib.h>
+
 #include "tss2_esys.h"
 
+#include "test-esapi.h"
 #include "esys_iutil.h"
 #define LOGMODULE test
 #include "util/log.h"
 
-/*
- * Test the ESAPI function Esys_PP_Commands.
+/** Test the ESAPI function Esys_PP_Commands.
+ *
  * If the test requires physical presence, the test is skipped.
+ *
+ *\b Note: platform authorization needed.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_PP_Commands() (O)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SKIP
+ * @retval EXIT_SUCCESS
  */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_pp_commands(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
+    int failure_return = EXIT_FAILURE;
 
     ESYS_TR auth_handle = ESYS_TR_RH_PLATFORM;
     TPML_CC setList = {
@@ -30,14 +44,33 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     r = Esys_PP_Commands(esys_context, auth_handle,
                          ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE,
                          &setList, &clearList);
+
+    if ((r == TPM2_RC_COMMAND_CODE) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_RC_LAYER)) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_TPM_RC_LAYER))) {
+        LOG_WARNING("Command TPM2_PP_Commands not supported by TPM.");
+        failure_return = EXIT_SKIP;
+    }
+
     if (r == (TPM2_RC_WARN  | TPM2_RC_PP)) {
         LOG_INFO("Command TPM2_PP_Commands requires physical presence.");
-        return 0;
+        return EXIT_SUCCESS;
+    }
+
+    if ((r & ~TPM2_RC_N_MASK) == TPM2_RC_BAD_AUTH) {
+        /* Platform authorization not possible test will be skipped */
+        LOG_WARNING("Platform authorization not possible.");
+        failure_return = EXIT_SKIP;
     }
     goto_if_error(r, "Error: PP_Commands", error);
 
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return r;
+    return failure_return;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_pp_commands(esys_context);
 }

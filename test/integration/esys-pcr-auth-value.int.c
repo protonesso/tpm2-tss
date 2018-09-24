@@ -4,21 +4,35 @@
  * All rights reserved.
  *******************************************************************************/
 
+#include <stdlib.h>
+
 #include "tss2_esys.h"
 
 #include "esys_iutil.h"
 #include "test-esapi.h"
+#include "test-esapi.h"
 #define LOGMODULE test
 #include "util/log.h"
 
-/*
- * Test the commands Esys_PCR_SetAuthValue and Esys_PCR_SetAuthPolicy.
+/** Test the commands Esys_PCR_SetAuthValue and Esys_PCR_SetAuthPolicy.
+ *
+ *\b Note: platform authorization needed.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_PCR_SetAuthPolicy() (O)
+ *  - Esys_PCR_SetAuthValue() (O)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SKIP
+ * @retval EXIT_SUCCESS
  */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_pcr_auth_value(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
+    int failure_return = EXIT_FAILURE;
 
     /*
      * PCR register 20 belongs to the policy group and the auth value group.
@@ -40,6 +54,16 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         ESYS_TR_NONE,
         &auth
         );
+
+
+    if ((r == TPM2_RC_COMMAND_CODE) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_RC_LAYER)) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_TPM_RC_LAYER))) {
+        LOG_WARNING("Command TPM2_PCR_SetAuthValue not supported by TPM.");
+        failure_return = EXIT_SKIP;
+        goto error;
+    }
+
     goto_if_error(r, "Error: PCR_SetAuthValue", error);
 
     TPM2B_DIGEST authPolicy = {
@@ -57,10 +81,22 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         &authPolicy,
         TPM2_ALG_SHA1,
         pcrHandle_handle);
+
+    if ((r & ~TPM2_RC_N_MASK) == TPM2_RC_BAD_AUTH) {
+        /* Platform authorization not possible test will be skipped */
+        LOG_WARNING("Platform authorization not possible.");
+        failure_return = EXIT_SKIP;
+    }
+
     goto_if_error(r, "Error: PCR_SetAuthPolicy", error);
 
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return r;
+    return failure_return;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_pcr_auth_value(esys_context);
 }

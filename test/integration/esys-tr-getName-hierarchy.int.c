@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2 */
 /*******************************************************************************
- * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG All
- * rights reserved.
+ * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG
+ * All rights reserved.
  *******************************************************************************/
 #include <stdlib.h>
 
@@ -12,17 +12,23 @@
 #define LOGMODULE test
 #include "util/log.h"
 
-/*
- * This tests the Esys_TR_FromTPMPublic and Esys_TR_GetName functions by
- * creating an NV Index and then attempting to retrieve an ESYS_TR object for
- * it. Then we call Esys_TR_GetName to see if the correct public name has been
+/** This tests the Esys_TR_FromTPMPublic and Esys_TR_GetName functions by
+ *  creating an NV Index and then attempting to retrieve an ESYS_TR object for
+ *  it.
+ *  Then we call Esys_TR_GetName to see if the correct public name has been
  * retrieved.
+ *
+ * Tested ESAPI commands:
+ *
+ * @param[in,out] ectx The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SUCCESS
  */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * ectx)
+test_esys_tr_getName_hierarchy(ESYS_CONTEXT * ectx)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
 
     TPM2B_NAME name1, *name2;
     size_t offset = 0;
@@ -40,13 +46,18 @@ test_invoke_esapi(ESYS_CONTEXT * ectx)
     {
         free(name2);
         LOG_ERROR("Names mismatch between NV_GetPublic and TR_GetName");
-        return 1;
+        return EXIT_FAILURE;
     }
 
     free(name2);
 
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return 1;
+    return EXIT_FAILURE;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_tr_getName_hierarchy(esys_context);
 }

@@ -1,25 +1,44 @@
 /* SPDX-License-Identifier: BSD-2 */
 /*******************************************************************************
- * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG All
- * rights reserved.
+ * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG
+ * All rights reserved.
  *******************************************************************************/
+
+#include <stdlib.h>
 
 #include "tss2_esys.h"
 
 #include "esys_iutil.h"
+#include "test-esapi.h"
 #define LOGMODULE test
 #include "util/log.h"
 
-/*
- * This test is intended to test the command Esys_NV_Certify.
+/** This test is intended to test the command Esys_NV_Certify.
+ *
  * We create a RSA primary signing key which will be used as signing key
  * for the NV data.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_CreatePrimary() (M)
+ *  - Esys_FlushContext() (M)
+ *  - Esys_NV_Certify() (O)
+ *  - Esys_NV_DefineSpace() (M)
+ *  - Esys_NV_UndefineSpace() (M)
+ *  - Esys_NV_Write() (M)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SKIP
+ * @retval EXIT_SUCCESS
  */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_nv_certify(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
+    ESYS_TR signHandle = ESYS_TR_NONE;
+    ESYS_TR nvHandle = ESYS_TR_NONE;
+    int failure_return = EXIT_FAILURE;
 
     TPM2B_AUTH authValuePrimary = {
         .size = 5,
@@ -100,7 +119,6 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     r = Esys_TR_SetAuth(esys_context, ESYS_TR_RH_OWNER, &authValue);
     goto_if_error(r, "Error: TR_SetAuth", error);
 
-    ESYS_TR signHandle;
     TPM2B_PUBLIC *outPublic;
     TPM2B_CREATION_DATA *creationData;
     TPM2B_DIGEST *creationHash;
@@ -113,7 +131,6 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                            &creationHash, &creationTicket);
     goto_if_error(r, "Error esys create primary", error);
 
-    ESYS_TR nvHandle_handle;
     TPM2B_AUTH auth = {.size = 20,
                        .buffer={10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
                                 20, 21, 22, 23, 24, 25, 26, 27, 28, 29}};
@@ -146,7 +163,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                             ESYS_TR_NONE,
                             &auth,
                             &publicInfo,
-                            &nvHandle_handle);
+                            &nvHandle);
     goto_if_error(r, "Error esys define nv space", error);
 
     UINT16 offset = 0;
@@ -155,8 +172,8 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                                                   1, 2, 3, 4, 5, 6, 7, 8, 9}};
 
     r = Esys_NV_Write(esys_context,
-                      nvHandle_handle,
-                      nvHandle_handle,
+                      nvHandle,
+                      nvHandle,
                       ESYS_TR_PASSWORD,
                       ESYS_TR_NONE,
                       ESYS_TR_NONE,
@@ -173,7 +190,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         esys_context,
         signHandle,
         ESYS_TR_RH_OWNER,
-        nvHandle_handle,
+        nvHandle,
         ESYS_TR_PASSWORD,
         ESYS_TR_PASSWORD,
         ESYS_TR_NONE,
@@ -183,11 +200,20 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         0,
         &certifyInfo,
         &signature);
+
+    if ((r == TPM2_RC_COMMAND_CODE) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_RC_LAYER)) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_TPM_RC_LAYER))) {
+        LOG_WARNING("Command TPM2_NV_Certify not supported by TPM.");
+        failure_return = EXIT_SKIP;
+        goto error;
+    }
+
     goto_if_error(r, "Error: NV_Certify", error);
 
     r = Esys_NV_UndefineSpace(esys_context,
                               ESYS_TR_RH_OWNER,
-                              nvHandle_handle,
+                              nvHandle,
                               ESYS_TR_PASSWORD,
                               ESYS_TR_NONE,
                               ESYS_TR_NONE
@@ -197,8 +223,31 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     r = Esys_FlushContext(esys_context,signHandle);
     goto_if_error(r, "Error: FlushContext", error);
 
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return 1;
+
+    if (signHandle != ESYS_TR_NONE) {
+        if (Esys_FlushContext(esys_context, signHandle) != TSS2_RC_SUCCESS) {
+            LOG_ERROR("Cleanup signHandle failed.");
+        }
+    }
+
+    if (nvHandle != ESYS_TR_NONE) {
+        if (Esys_NV_UndefineSpace(esys_context,
+                                  ESYS_TR_RH_OWNER,
+                                  nvHandle,
+                                  ESYS_TR_PASSWORD,
+                                  ESYS_TR_NONE,
+                                  ESYS_TR_NONE) != TSS2_RC_SUCCESS) {
+             LOG_ERROR("Cleanup nvHandle failed.");
+        }
+    }
+
+    return failure_return;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_nv_certify(esys_context);
 }

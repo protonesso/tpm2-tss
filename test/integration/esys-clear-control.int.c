@@ -4,6 +4,8 @@
  * All rights reserved.
  *******************************************************************************/
 
+#include <stdlib.h>
+
 #include "tss2_esys.h"
 
 #include "esys_iutil.h"
@@ -11,15 +13,26 @@
 #define LOGMODULE test
 #include "util/log.h"
 
-/*
- * Test the ESAPI function Esys_ClearControl.
+/** Test the ESAPI function Esys_ClearControl.
+ *
  * The clear command will be disabled and with Esys_Clear it will
  * be checked whether clear is disabled.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_Clear() (M)
+ *  - Esys_ClearControl() (M)
+ *
+ * *\b Note: platform authorization needed.
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SUCCESS
  */
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_clear_control(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
+    int failure_return = EXIT_FAILURE;
 
     ESYS_TR auth_handle = ESYS_TR_RH_PLATFORM;
     TPMI_YES_NO disable = TPM2_YES;
@@ -31,6 +44,13 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         ESYS_TR_NONE,
         ESYS_TR_NONE,
         disable);
+
+    if ((r & ~TPM2_RC_N_MASK) == TPM2_RC_BAD_AUTH) {
+        /* Platform authorization not possible test will be skipped */
+        LOG_WARNING("Platform authorization not possible.");
+        failure_return =  EXIT_SKIP;
+        goto error;
+    }
 
     goto_if_error(r, "Error: ClearControl", error);
 
@@ -54,8 +74,13 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
 
     goto_if_error(r, "Error: ClearControl", error);
 
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return 1;
+    return failure_return;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_clear_control(esys_context);
 }

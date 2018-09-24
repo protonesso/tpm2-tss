@@ -4,17 +4,27 @@
  * All rights reserved.
  *******************************************************************************/
 
+#include <stdlib.h>
+
 #include "tss2_esys.h"
 
 #include "esys_iutil.h"
 #define LOGMODULE test
 #include "util/log.h"
 
-/* Test the ESAPI function Esys_StirRandom */
+/** Test the ESAPI function Esys_StirRandom. 
+ *
+ * Tested ESAPI commands:
+ *  - Esys_StirRandom() (M)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SUCCESS
+ */
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_stir_random(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
 
     TPM2B_SENSITIVE_DATA inData  = {
         .size = 20,
@@ -30,8 +40,13 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         &inData);
     goto_if_error(r, "Error: StirRandom", error);
 
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return r;
+    return EXIT_FAILURE;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_stir_random(esys_context);
 }

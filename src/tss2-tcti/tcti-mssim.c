@@ -9,9 +9,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/time.h>
 #include <inttypes.h>
+
+#ifndef _WIN32
+#include <sys/time.h>
 #include <unistd.h>
+#endif
 
 #include "tss2_mu.h"
 #include "tss2_tcti_mssim.h"
@@ -83,13 +86,21 @@ TSS2_RC tcti_platform_command (
         return TSS2_TCTI_RC_IO_ERROR;
     }
 
-    read_ret = read (tcti_mssim->platform_sock, buf, sizeof (buf));
+#ifdef _WIN32
+    read_ret = recv (tcti_mssim->platform_sock, (char *) buf, sizeof (buf), 0);
     if (read_ret < (ssize_t) sizeof (buf)) {
-        LOG_ERROR("Failed to get response to platform command, errno %d: %s",
-                  errno, strerror (errno));
+        LOG_ERROR ("Failed to get response to platform command, errno %d: %s",
+                   WSAGetLastError(), strerror (WSAGetLastError()));
         return TSS2_TCTI_RC_IO_ERROR;
     }
-
+#else
+    read_ret = read(tcti_mssim->platform_sock, buf, sizeof (buf));
+    if (read_ret < (ssize_t) sizeof (buf)) {
+        LOG_ERROR ("Failed to get response to platform command, errno %d: %s",
+                   errno, strerror (errno));
+        return TSS2_TCTI_RC_IO_ERROR;
+    }
+#endif
     LOGBLOB_DEBUG (buf, sizeof (buf), "Received %zu bytes from socket 0x%"
                    PRIx32 ":", read_ret, tcti_mssim->platform_sock);
     rc = Tss2_MU_UINT32_Unmarshal (buf, sizeof (rsp), NULL, &rsp);
@@ -494,8 +505,13 @@ Tss2_Tcti_Mssim_Init (
     char *conf_copy = NULL;
     mssim_conf_t mssim_conf = MSSIM_CONF_DEFAULT_INIT;
 
-    LOG_TRACE ("tctiContext: 0x%" PRIxPTR ", size: 0x%" PRIxPTR ", conf: %s",
-               (uintptr_t)tctiContext, (uintptr_t)size, conf);
+    if (conf == NULL)
+        LOG_TRACE ("tctiContext: 0x%" PRIxPTR ", size: 0x%" PRIxPTR ""
+                   " default configuration will be used.",
+                   (uintptr_t)tctiContext, (uintptr_t)size);
+    else
+        LOG_TRACE ("tctiContext: 0x%" PRIxPTR ", size: 0x%" PRIxPTR ", conf: %s",
+                   (uintptr_t)tctiContext, (uintptr_t)size, conf);
     if (size == NULL) {
         return TSS2_TCTI_RC_BAD_VALUE;
     }

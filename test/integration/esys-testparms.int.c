@@ -4,17 +4,27 @@
  * All rights reserved.
  *******************************************************************************/
 
+#include <stdlib.h>
+
 #include "tss2_esys.h"
 
 #include "esys_iutil.h"
 #define LOGMODULE test
 #include "util/log.h"
 
-/* Test the ESAPI function Esys_TestParms */
+/** Test the ESAPI function Esys_TestParms. 
+ *
+ * Tested ESAPI commands:
+ *  - Esys_TestParms() (M)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SUCCESS
+ */
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_testparms(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
 
     TPMT_PUBLIC_PARMS parameters = {
         .type = TPM2_ALG_RSA,
@@ -30,7 +40,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                       TPM2_ALG_NULL,
                   },
              .keyBits = 2048,
-                 .exponent = 65537,
+                 .exponent = 0,
              }
         }
     };
@@ -44,8 +54,13 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         );
     goto_if_error(r, "Error: TestParms", error);
 
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return 1;
+    return EXIT_FAILURE;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_testparms(esys_context);
 }

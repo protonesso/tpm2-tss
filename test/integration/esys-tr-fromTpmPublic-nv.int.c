@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2 */
 /*******************************************************************************
- * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG All
- * rights reserved.
+ * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG
+ * All rights reserved.
  *******************************************************************************/
 #include <stdlib.h>
 
@@ -11,19 +11,28 @@
 #define LOGMODULE test
 #include "util/log.h"
 
-/*
- * This tests the Esys_TR_FromTPMPublic and Esys_TR_GetName functions by
- * creating an NV Index and then attempting to retrieve an ESYS_TR object for
- * it. Then we call Esys_TR_GetName to see if the correct public name has been
+/** This tests the Esys_TR_FromTPMPublic and Esys_TR_GetName functions by
+ *  creating an NV Index and then attempting to retrieve an ESYS_TR object for
+ *  it.
+ *  Then we call Esys_TR_GetName to see if the correct public name has been
  * retrieved.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_NV_DefineSpace() (M)
+ *  - Esys_NV_ReadPublic() (M)
+ *  - Esys_NV_UndefineSpace() (M)
+ *
+ * @param[in,out] ectx The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SUCCESS
  */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * ectx)
+test_esys_tr_fromTpmPublic_nv(ESYS_CONTEXT * ectx)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
+    ESYS_TR nvHandle = ESYS_TR_NONE;
 
-    ESYS_TR nvHandle;
     TPM2B_NAME *name1, *name2;
     TPM2B_AUTH auth = {.size = 20,
                        .buffer={10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
@@ -78,12 +87,30 @@ test_invoke_esapi(ESYS_CONTEXT * ectx)
     free(name1);
     free(name2);
 
-    return 0;
+    return EXIT_SUCCESS;
 
 error_name2:
     free(name2);
 error_name1:
     free(name1);
 error:
-    return 1;
+
+    if (nvHandle != ESYS_TR_NONE) {
+        if (Esys_NV_UndefineSpace(ectx,
+                                  ESYS_TR_RH_OWNER,
+                                  nvHandle,
+                                  ESYS_TR_PASSWORD,
+                                  ESYS_TR_NONE,
+                                  ESYS_TR_NONE) != TSS2_RC_SUCCESS) {
+             LOG_ERROR("Cleanup nvHandle failed.");
+        }
+    }
+
+
+    return EXIT_FAILURE;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_tr_fromTpmPublic_nv(esys_context);
 }

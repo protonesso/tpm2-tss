@@ -1,34 +1,52 @@
 /* SPDX-License-Identifier: BSD-2 */
 /*******************************************************************************
- * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG All
- * rights reserved.
+ * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG
+ * All rights reserved.
  *******************************************************************************/
+
+#include <stdlib.h>
 
 #include "tss2_esys.h"
 
 #include "esys_iutil.h"
+#include "test-esapi.h"
 #define LOGMODULE test
 #include "util/log.h"
 
-/*
- * This test is intended to test the ESAPI command PolicyPassword.
+/** This test is intended to test the ESAPI command PolicyPassword.
+ *
  * First in a trial session the policy value to ensure that auth value
  * is included in the policy session used for authorization is
  * computed.
  * We start by creating a primary key (Esys_CreatePrimary) with this
  * policy value and a certain authorization. Than a second key it created
  * with a PoliyPassword policy session.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_Create() (M)
+ *  - Esys_CreatePrimary() (M)
+ *  - Esys_FlushContext() (M)
+ *  - Esys_PolicyGetDigest() (M)
+ *  - Esys_PolicyPassword() (M)
+ *  - Esys_StartAuthSession() (M)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SUCCESS
  */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_policy_password(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
+    ESYS_TR primaryHandle = ESYS_TR_NONE;
+    ESYS_TR policySession = ESYS_TR_NONE;
+
     /*
      * Firth the policy value for changing the auth value of an NV index has to be
      * determined with a policy trial session.
      */
-    ESYS_TR sessionTrial;
+    ESYS_TR sessionTrial = ESYS_TR_NONE;
     TPMT_SYM_DEF symmetricTrial = {.algorithm = TPM2_ALG_AES,
                                    .keyBits = {.aes = 128},
                                    .mode = {.aes = TPM2_ALG_CFB}
@@ -88,7 +106,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                       .scheme = TPM2_ALG_NULL
                   },
                  .keyBits = 2048,
-                 .exponent = 65537,
+                 .exponent = 0,
              },
             .unique.rsa = {
                  .size = 0,
@@ -135,7 +153,6 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     r = Esys_TR_SetAuth(esys_context, ESYS_TR_RH_OWNER, &authValue);
     goto_if_error(r, "Error: TR_SetAuth", error);
 
-    ESYS_TR primaryHandle_handle;
     TPM2B_PUBLIC *outPublic;
     TPM2B_CREATION_DATA *creationData;
     TPM2B_DIGEST *creationHash;
@@ -143,12 +160,11 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
 
     r = Esys_CreatePrimary(esys_context, ESYS_TR_RH_OWNER, ESYS_TR_PASSWORD,
                            ESYS_TR_NONE, ESYS_TR_NONE, &inSensitivePrimary, &inPublic,
-                           &outsideInfo, &creationPCR, &primaryHandle_handle,
+                           &outsideInfo, &creationPCR, &primaryHandle,
                            &outPublic, &creationData, &creationHash,
                            &creationTicket);
     goto_if_error(r, "Error esys create primary", error);
 
-    ESYS_TR policySession;
     TPMT_SYM_DEF policySymmetric = {.algorithm = TPM2_ALG_AES,
                                     .keyBits = {.aes = 128},
                                     .mode = {.aes = TPM2_ALG_CFB}
@@ -174,7 +190,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         );
     goto_if_error(r, "Error: PolicyAuthValue", error);
 
-    r = Esys_TR_SetAuth(esys_context, primaryHandle_handle, &authValuePrimary);
+    r = Esys_TR_SetAuth(esys_context, primaryHandle, &authValuePrimary);
     goto_if_error(r, "Error: TR_SetAuth", error);
 
     TPM2B_AUTH authKey2 = {
@@ -219,7 +235,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                       TPM2_ALG_NULL,
                   },
                  .keyBits = 2048,
-                 .exponent = 65537
+                 .exponent = 0
              },
             .unique.rsa = {
                  .size = 0,
@@ -246,7 +262,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     TPMT_TK_CREATION *creationTicket2;
 
     r = Esys_Create(esys_context,
-                    primaryHandle_handle,
+                    primaryHandle,
                     policySession, ESYS_TR_NONE, ESYS_TR_NONE,
                     &inSensitive2,
                     &inPublic2,
@@ -257,11 +273,32 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                     &creationData2, &creationHash2, &creationTicket2);
     goto_if_error(r, "Error esys create ", error);
 
-    r = Esys_FlushContext(esys_context, primaryHandle_handle);
+    r = Esys_FlushContext(esys_context, primaryHandle);
     goto_if_error(r, "Error: FlushContext", error);
 
-    return 0;
+    r = Esys_FlushContext(esys_context, sessionTrial);
+    goto_if_error(r, "Flushing context", error);
+
+    return EXIT_SUCCESS;
 
  error:
-    return 1;
+
+    if (policySession != ESYS_TR_NONE) {
+        if (Esys_FlushContext(esys_context, policySession) != TSS2_RC_SUCCESS) {
+            LOG_ERROR("Cleanup policySession failed.");
+        }
+    }
+
+    if (primaryHandle != ESYS_TR_NONE) {
+        if (Esys_FlushContext(esys_context, primaryHandle) != TSS2_RC_SUCCESS) {
+            LOG_ERROR("Cleanup primaryHandle failed.");
+        }
+    }
+
+    return EXIT_FAILURE;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_policy_password(esys_context);
 }

@@ -4,21 +4,31 @@
  * All rights reserved.
  *******************************************************************************/
 
+#include <stdlib.h>
+
 #include "tss2_esys.h"
 
 #include "esys_iutil.h"
 #define LOGMODULE test
 #include "util/log.h"
 
-/*
- * Test the ESAPI commands HashSequenceStart, SequenceUpdate,
- * and EventSequenceComplete.
+/** Test the ESAPI commands HashSequenceStart, SequenceUpdate,
+ *  and EventSequenceComplete.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_EventSequenceComplete() (M)
+ *  - Esys_HashSequenceStart() (M)
+ *  - Esys_SequenceUpdate() (M)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SUCCESS
  */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_event_sequence_complete(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
 
     TPM2B_AUTH auth = {.size = 20,
                        .buffer={10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
@@ -67,8 +77,13 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         &results);
     goto_if_error(r, "Error: EventSequenceComplete", error);
 
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return 1;
+    return EXIT_FAILURE;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_event_sequence_complete(esys_context);
 }

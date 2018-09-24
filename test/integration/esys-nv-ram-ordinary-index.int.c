@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: BSD-2 */
 /*******************************************************************************
- * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG All
- * rights reserved.
+ * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG
+ * All rights reserved.
  *******************************************************************************/
+
+#include <stdlib.h>
 
 #include "tss2_esys.h"
 
@@ -11,21 +13,39 @@
 #define LOGMODULE test
 #include "util/log.h"
 
-/*
- * This test is intended to test the ESAPI commands  nv define space, nv write,
- * nv read command, nv lock write and nv lock read, and nv undefine.
+/** This test is intended to test the ESAPI commands  nv define space, nv write,
+ *  nv read command, nv lock write and nv lock read, and nv undefine.
+ *
  * The names stored in the ESAPI resource are compared
  * with the names delivered from the TPM by the command ReadPublic.
  * only one of the tests NV_ReadLock and NV_WriteLock can be activated
  * by the defines TEST_READ_LOCK and TEST_WRITE_LOCK (-D option)
+ *
+ * Tested ESAPI commands:
+ *  - Esys_FlushContext() (M)
+ *  - Esys_NV_DefineSpace() (M)
+ *  - Esys_NV_Read() (M)
+ *  - Esys_NV_ReadLock() (M)
+ *  - Esys_NV_ReadPublic() (M)
+ *  - Esys_NV_UndefineSpace() (M)
+ *  - Esys_NV_Write() (M)
+ *  - Esys_NV_WriteLock() (M)
+ *  - Esys_StartAuthSession() (M)
+ *
+ * Used compiler defines: TEST_READ_LOCK TEST_SESSION TEST_WRITE_LOCK
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SUCCESS
  */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_nv_ram_ordinary_index(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
+    ESYS_TR nvHandle = ESYS_TR_NONE;
 #ifdef TEST_SESSION
-    ESYS_TR session;
+    ESYS_TR session = ESYS_TR_NONE;
     TPMT_SYM_DEF symmetric = {.algorithm = TPM2_ALG_AES,
                               .keyBits = {.aes = 128},
                               .mode = {.aes = TPM2_ALG_CFB}
@@ -48,7 +68,6 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     goto_if_error(r, "Error: During initialization of session", error);
 #endif /* TEST_SESSION */
 
-    ESYS_TR nvHandle_handle;
     TPM2B_AUTH auth = {.size = 20,
                        .buffer={10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
                                 20, 21, 22, 23, 24, 25, 26, 27, 28, 29}};
@@ -85,7 +104,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                             ESYS_TR_NONE,
                             &auth,
                             &publicInfo,
-                            &nvHandle_handle);
+                            &nvHandle);
 
     goto_if_error(r, "Error esys define nv space", error);
 
@@ -98,7 +117,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     TPM2B_NAME *nvName;
 
     r = Esys_NV_ReadPublic(esys_context,
-                           nvHandle_handle,
+                           nvHandle,
                            ESYS_TR_NONE,
                            ESYS_TR_NONE,
                            ESYS_TR_NONE,
@@ -108,7 +127,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
 
     RSRC_NODE_T *nvHandleNode;
 
-    r = esys_GetResourceObject(esys_context, nvHandle_handle, &nvHandleNode);
+    r = esys_GetResourceObject(esys_context, nvHandle, &nvHandleNode);
     goto_if_error(r, "Error: nv get resource object", error);
 
     if (nvName->size != nvHandleNode->rsrc.name.size ||
@@ -117,8 +136,8 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         goto error;
     }
     r = Esys_NV_Write(esys_context,
-                      nvHandle_handle,
-                      nvHandle_handle,
+                      nvHandle,
+                      nvHandle,
 #ifdef TEST_SESSION
                       session,
 #else
@@ -132,7 +151,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     goto_if_error(r, "Error esys nv write", error);
 
     r = Esys_NV_ReadPublic(esys_context,
-                           nvHandle_handle,
+                           nvHandle,
                            ESYS_TR_NONE,
                            ESYS_TR_NONE,
                            ESYS_TR_NONE,
@@ -140,7 +159,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                            &nvName);
     goto_if_error(r, "Error: nv read public", error);
 
-    r = esys_GetResourceObject(esys_context, nvHandle_handle, &nvHandleNode);
+    r = esys_GetResourceObject(esys_context, nvHandle, &nvHandleNode);
     goto_if_error(r, "Error: nv get resource object", error);
 
     if (nvName->size != nvHandleNode->rsrc.name.size ||
@@ -152,8 +171,8 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     TPM2B_MAX_NV_BUFFER *nv_test_data2;
 
     r = Esys_NV_Read(esys_context,
-                     nvHandle_handle,
-                     nvHandle_handle,
+                     nvHandle,
+                     nvHandle,
 #ifdef TEST_SESSION
                      session,
 #else
@@ -168,7 +187,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     goto_if_error(r, "Error esys nv read", error);
 
     r = Esys_NV_ReadPublic(esys_context,
-                           nvHandle_handle,
+                           nvHandle,
                            ESYS_TR_NONE,
                            ESYS_TR_NONE,
                            ESYS_TR_NONE,
@@ -176,7 +195,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                            &nvName);
     goto_if_error(r, "Error: nv read public", error);
 
-    r = esys_GetResourceObject(esys_context, nvHandle_handle, &nvHandleNode);
+    r = esys_GetResourceObject(esys_context, nvHandle, &nvHandleNode);
     goto_if_error(r, "Error: nv get resource object", error);
 
     if (nvName->size != nvHandleNode->rsrc.name.size ||
@@ -187,8 +206,8 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
 
 #ifdef TEST_READ_LOCK
     r = Esys_NV_ReadLock(esys_context,
-                         nvHandle_handle,
-                         nvHandle_handle,
+                         nvHandle,
+                         nvHandle,
 #ifdef TEST_SESSION
                          session,
 #else
@@ -200,7 +219,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     goto_if_error(r, "Error: NV_ReadLock", error);
 
     r = Esys_NV_ReadPublic(esys_context,
-                           nvHandle_handle,
+                           nvHandle,
                            ESYS_TR_NONE,
                            ESYS_TR_NONE,
                            ESYS_TR_NONE,
@@ -208,7 +227,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                            &nvName);
     goto_if_error(r, "Error: nv read public", error);
 
-    r = esys_GetResourceObject(esys_context, nvHandle_handle, &nvHandleNode);
+    r = esys_GetResourceObject(esys_context, nvHandle, &nvHandleNode);
     goto_if_error(r, "Error: nv get resource object", error);
 
     if (nvName->size != nvHandleNode->rsrc.name.size ||
@@ -218,8 +237,8 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     }
 
     r = Esys_NV_Read(esys_context,
-                     nvHandle_handle,
-                     nvHandle_handle,
+                     nvHandle,
+                     nvHandle,
 #ifdef TEST_SESSION
                      session,
 #else
@@ -235,8 +254,8 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
 #else /* TEST_READ_LOCK */
 #ifdef TEST_WRITE_LOCK
     r = Esys_NV_WriteLock(esys_context,
-                          nvHandle_handle,
-                          nvHandle_handle,
+                          nvHandle,
+                          nvHandle,
 #ifdef TEST_SESSION
                           session,
 #else
@@ -248,7 +267,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     goto_if_error(r, "Error: NV_WriteLock", error);
 
     r = Esys_NV_ReadPublic(esys_context,
-                           nvHandle_handle,
+                           nvHandle,
                            ESYS_TR_NONE,
                            ESYS_TR_NONE,
                            ESYS_TR_NONE,
@@ -256,7 +275,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
                            &nvName);
     goto_if_error(r, "Error: NV_ReadPublic", error);
 
-    r = esys_GetResourceObject(esys_context, nvHandle_handle, &nvHandleNode);
+    r = esys_GetResourceObject(esys_context, nvHandle, &nvHandleNode);
     goto_if_error(r, "Error: nv get resource object", error);
 
     if (nvName->size != nvHandleNode->rsrc.name.size ||
@@ -265,8 +284,8 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         goto error;
     }
     r = Esys_NV_Write(esys_context,
-                      nvHandle_handle,
-                      nvHandle_handle,
+                      nvHandle,
+                      nvHandle,
 #ifdef TEST_SESSION
                       session,
 #else
@@ -282,7 +301,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
 
     r = Esys_NV_UndefineSpace(esys_context,
                               ESYS_TR_RH_OWNER,
-                              nvHandle_handle,
+                              nvHandle,
 #ifdef TEST_SESSION
                               session,
 #else
@@ -297,8 +316,36 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     r = Esys_FlushContext(esys_context, session);
     goto_if_error(r, "Error: FlushContext", error);
 #endif
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return 1;
+
+    if (nvHandle != ESYS_TR_NONE) {
+        if (Esys_NV_UndefineSpace(esys_context,
+                                  ESYS_TR_RH_OWNER,
+                                  nvHandle,
+#ifdef TEST_SESSION
+                                  session,
+#else
+                                  ESYS_TR_PASSWORD,
+#endif
+                                  ESYS_TR_NONE,
+                                  ESYS_TR_NONE) != TSS2_RC_SUCCESS) {
+             LOG_ERROR("Cleanup nvHandle failed.");
+        }
+    }
+
+#ifdef TEST_SESSION
+    if (session != ESYS_TR_NONE) {
+        if (Esys_FlushContext(esys_context, session) != TSS2_RC_SUCCESS) {
+            LOG_ERROR("Cleanup session failed.");
+        }
+    }
+#endif
+    return EXIT_FAILURE;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_nv_ram_ordinary_index(esys_context);
 }

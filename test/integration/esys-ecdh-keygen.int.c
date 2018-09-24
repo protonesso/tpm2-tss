@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: BSD-2 */
 /*******************************************************************************
- * Copyright 2017, Fraunhofer SIT sponsored by Infineon Technologies AG
+ * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG
  * All rights reserved.
  *******************************************************************************/
+
+#include <stdlib.h>
 
 #include "tss2_esys.h"
 
@@ -10,16 +12,26 @@
 #define LOGMODULE test
 #include "util/log.h"
 
-/*
- * This test is intended to test Esys_ECDH_KeyGen based on an ECC key
- * created with Esys_CreatePrimary.
+/** This test is intended to test Esys_ECDH_KeyGen based on an ECC key
+ *  created with Esys_CreatePrimary.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_CreatePrimary() (M)
+ *  - Esys_ECDH_KeyGen() (M)
+ *  - Esys_FlushContext() (M)
+ *  - Esys_StartAuthSession() (M)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SUCCESS
  */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_ecdh_keygen(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r;
-    ESYS_TR session;
+    TSS2_RC r;
+    ESYS_TR eccHandle = ESYS_TR_NONE;
+    ESYS_TR session = ESYS_TR_NONE;
     TPMT_SYM_DEF symmetric = {.algorithm = TPM2_ALG_AES,.keyBits = {.aes =
                                                                     128},.mode =
         {.aes = TPM2_ALG_CFB}
@@ -59,8 +71,7 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
             .type = TPM2_ALG_ECC,
             .nameAlg = TPM2_ALG_SHA1,
             .objectAttributes = (TPMA_OBJECT_USERWITHAUTH |
-                                 TPMA_OBJECT_RESTRICTED |
-                                 TPMA_OBJECT_SIGN_ENCRYPT |
+                                 TPMA_OBJECT_DECRYPT |
                                  TPMA_OBJECT_FIXEDTPM |
                                  TPMA_OBJECT_FIXEDPARENT |
                                  TPMA_OBJECT_SENSITIVEDATAORIGIN),
@@ -70,18 +81,14 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
             .parameters.eccDetail = {
                  .symmetric = {
                      .algorithm = TPM2_ALG_NULL,
-                     .keyBits.aes = 128,
-                     .mode.aes = TPM2_ALG_CFB,
                  },
                  .scheme = {
-                      .scheme = TPM2_ALG_ECDSA,
-                      .details = {.ecdsa =
-                                  {.hashAlg = TPM2_ALG_SHA1}
-                      }
+                      .scheme = TPM2_ALG_NULL,
+                      .details = {}
                   },
                  .curveID = TPM2_ECC_NIST_P256,
-                 .kdf = {.scheme =
-                         TPM2_ALG_NULL,.details = {}
+                 .kdf = {.scheme = TPM2_ALG_NULL,
+                         .details = {}
                   }
              },
             .unique.ecc = {
@@ -112,7 +119,6 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     r = Esys_TR_SetAuth(esys_context, ESYS_TR_RH_OWNER, &authValue);
     goto_if_error(r, "Error: TR_SetAuth", error);
 
-    ESYS_TR eccHandle;
     TPM2B_PUBLIC *outPublic;
     TPM2B_CREATION_DATA *creationData;
     TPM2B_DIGEST *creationHash;
@@ -141,9 +147,29 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     r = Esys_FlushContext(esys_context, eccHandle);
     goto_if_error(r, "Error during FlushContext", error);
 
-    return 0;
+    r = Esys_FlushContext(esys_context, session);
+    goto_if_error(r, "Flushing context", error);
+
+    return EXIT_SUCCESS;
 
  error:
     LOG_ERROR("\nError Code: %x\n", r);
-    return 1;
+
+    if (session != ESYS_TR_NONE) {
+        if (Esys_FlushContext(esys_context, session) != TSS2_RC_SUCCESS) {
+            LOG_ERROR("Cleanup session failed.");
+        }
+    }
+
+    if (eccHandle != ESYS_TR_NONE) {
+        if (Esys_FlushContext(esys_context, eccHandle) != TSS2_RC_SUCCESS) {
+            LOG_ERROR("Cleanup eccHandle failed.");
+        }
+    }
+    return EXIT_FAILURE;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_ecdh_keygen(esys_context);
 }

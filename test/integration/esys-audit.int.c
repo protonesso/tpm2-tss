@@ -4,25 +4,48 @@
  * All rights reserved.
  *******************************************************************************/
 
+#include <stdlib.h>
+
 #include "tss2_esys.h"
 
 #include "esys_iutil.h"
+#include "test-esapi.h"
 #define LOGMODULE test
 #include "util/log.h"
 
-/*
- * This test is intended to test the ESAPI audit commands.
+/** This test is intended to test the ESAPI audit commands.
+ *
  * First a key for signing the audit digest is computed.
  * A audit session is started, and for the command GetCapability the
  * command audit digest and the session audit digest is computed.
  * (Esys_GetCommandAuditDigest, Esys_GetSessionAuditDigest). In the
  * last test the audit hash alg is changed with Esys_SetCommandCodeAuditStatus.
+ *
+ *\b Note: platform authorization needed.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_CreatePrimary() (M)
+ *  - Esys_FlushContext() (M)
+ *  - Esys_GetCapability() (M)
+ *  - Esys_GetCommandAuditDigest() (O)
+ *  - Esys_GetSessionAuditDigest() (M)
+ *  - Esys_SetCommandCodeAuditStatus() (O)
+ *  - Esys_StartAuthSession() (M)
+ *  - Esys_StartAuthSession() (M)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SKIP
+ * @retval EXIT_SUCCESS
  */
 
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_audit(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
+    ESYS_TR signHandle = ESYS_TR_NONE;
+    ESYS_TR session = ESYS_TR_NONE;
+    int failure_return = EXIT_FAILURE;
 
     /* Compute a signing key */
     TPM2B_AUTH authValuePrimary = {
@@ -100,7 +123,6 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     r = Esys_TR_SetAuth(esys_context, ESYS_TR_RH_OWNER, &authValue);
     goto_if_error(r, "Error: TR_SetAuth", error);
 
-    ESYS_TR signHandle;
     TPM2B_PUBLIC *outPublic;
     TPM2B_CREATION_DATA *creationData;
     TPM2B_DIGEST *creationHash;
@@ -119,14 +141,13 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
     TPM2_SE sessionType = TPM2_SE_HMAC;
     TPMI_ALG_HASH authHash = TPM2_ALG_SHA256;
     TPMT_SYM_DEF symmetric = {.algorithm = TPM2_ALG_NULL };
-    ESYS_TR session;
 
     r = Esys_StartAuthSession(esys_context, ESYS_TR_NONE, ESYS_TR_NONE,
                               ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
                               NULL,
                               sessionType, &symmetric, authHash, &session);
 
-    goto_if_error(r, "Error Esys_StartAuthSessiony", error);
+    goto_if_error(r, "Error Esys_StartAuthSession", error);
     r = Esys_TRSess_SetAttributes(esys_context, session, sessionAttributes,
                                   0xff);
     goto_if_error(r, "Error Esys_TRSess_SetAttributes", error);
@@ -163,6 +184,15 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         &inScheme,
         &auditInfo,
         &signature);
+
+    if ((r == TPM2_RC_COMMAND_CODE) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_RC_LAYER)) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_TPM_RC_LAYER))) {
+        LOG_WARNING("Command TPM2_GetCommandAuditDigest not supported by TPM.");
+        failure_return = EXIT_SKIP;
+        goto error;
+    }
+
     goto_if_error(r, "Error: GetCommandAuditDigest", error);
 
     r = Esys_GetSessionAuditDigest(
@@ -192,16 +222,43 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         auditAlg,
         &setList,
         &clearList);
+
+    if ((r & ~TPM2_RC_N_MASK) == TPM2_RC_BAD_AUTH) {
+        /* Platform authorization not possible test will be skipped */
+        LOG_WARNING("Platform authorization not possible.");
+        failure_return =  EXIT_SKIP;
+        goto error;
+    }
+
     goto_if_error(r, "Error: SetCommandCodeAuditStatus", error);
 
     r = Esys_FlushContext(esys_context, signHandle);
     goto_if_error(r, "Error: FlushContext", error);
 
+    signHandle = ESYS_TR_NONE;
+
     r = Esys_FlushContext(esys_context, session);
     goto_if_error(r, "Error during FlushContext", error);
 
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return 1;
+
+    if (session != ESYS_TR_NONE) {
+        if (Esys_FlushContext(esys_context, session) != TSS2_RC_SUCCESS) {
+            LOG_ERROR("Cleanup session failed.");
+        }
+    }
+
+    if (signHandle != ESYS_TR_NONE) {
+        if (Esys_FlushContext(esys_context, signHandle) != TSS2_RC_SUCCESS) {
+            LOG_ERROR("Cleanup signHandle failed.");
+        }
+    }
+    return failure_return;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_audit(esys_context);
 }

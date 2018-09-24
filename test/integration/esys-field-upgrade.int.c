@@ -4,17 +4,31 @@
  * All rights reserved.
  *******************************************************************************/
 
+#include <stdlib.h>
+
 #include "tss2_esys.h"
 
 #include "esys_iutil.h"
+#include "test-esapi.h"
 #define LOGMODULE test
 #include "util/log.h"
 
-/* Test the ESAPI function Esys_FieldUpgradeStart and   Esys_FieldUpgradeData */
+/** Test the ESAPI function Esys_FieldUpgradeStart and   Esys_FieldUpgradeData. 
+ *
+ * Tested ESAPI commands:
+ *  - Esys_FieldUpgradeData() (O)
+ *  - Esys_FieldUpgradeStart() (O)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SKIP
+ * @retval EXIT_SUCCESS
+ */
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_field_upgrade(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
+    int failure_return = EXIT_FAILURE;
 
     TPM2B_MAX_BUFFER fuData = {
         .size = 20,
@@ -32,9 +46,11 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         &fuData,
         &nextDigest,
         &firstDigest);
-    if (r == TPM2_RC_COMMAND_CODE) {
+    if ((r == TPM2_RC_COMMAND_CODE) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_RC_LAYER)) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_TPM_RC_LAYER))) {
         LOG_INFO("Command TPM2_FieldUpgradeData not supported by TPM.");
-        r = 77; /* Skip */
+        failure_return = EXIT_SKIP;
         goto error;
     }
 
@@ -58,8 +74,13 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         &manifestSignature);
     goto_if_error(r, "Error: FieldUpgradeStart", error);
     */
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return r;
+    return failure_return;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_field_upgrade(esys_context);
 }

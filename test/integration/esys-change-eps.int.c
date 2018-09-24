@@ -4,17 +4,31 @@
  * All rights reserved.
  *******************************************************************************/
 
+#include <stdlib.h>
+
 #include "tss2_esys.h"
 
 #include "esys_iutil.h"
+#include "test-esapi.h"
 #define LOGMODULE test
 #include "util/log.h"
 
-/* Test the ESAPI function Esys_ChangeEPS */
+/** Test the ESAPI function Esys_ChangeEPS. 
+ *
+ *\b Note: platform authorization needed.
+ *
+ * Tested ESAPI commands:
+ *  - Esys_ChangeEPS() (O)
+ *
+ * @param[in,out] esys_context The ESYS_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SKIP
+ * @retval EXIT_SUCCESS
+ */
 int
-test_invoke_esapi(ESYS_CONTEXT * esys_context)
+test_esys_change_eps(ESYS_CONTEXT * esys_context)
 {
-    uint32_t r = 0;
+    TSS2_RC r;
 
     ESYS_TR authHandle = ESYS_TR_RH_PLATFORM;
 
@@ -24,10 +38,30 @@ test_invoke_esapi(ESYS_CONTEXT * esys_context)
         ESYS_TR_PASSWORD,
         ESYS_TR_NONE,
         ESYS_TR_NONE);
+
+    if ((r == TPM2_RC_COMMAND_CODE) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_RC_LAYER)) ||
+        (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_TPM_RC_LAYER))) {
+        LOG_WARNING("Command TPM2_ChangeEPS not supported by TPM.");
+        return  EXIT_SKIP;
+        goto error;
+    }
+
+    if ((r & ~TPM2_RC_N_MASK) == TPM2_RC_BAD_AUTH) {
+        /* Platform authorization not possible test will be skipped */
+        LOG_WARNING("Platform authorization not possible.");
+        return EXIT_SKIP;
+    }
+
     goto_if_error(r, "Error: ChangeEPS", error);
 
-    return 0;
+    return EXIT_SUCCESS;
 
  error:
-    return r;
+    return EXIT_FAILURE;
+}
+
+int
+test_invoke_esapi(ESYS_CONTEXT * esys_context) {
+    return test_esys_change_eps(esys_context);
 }
