@@ -1,37 +1,15 @@
-;**********************************************************************;
+# SPDX-License-Identifier: BSD-2
 # Copyright (c) 2015 - 2018 Intel Corporation
 # Copyright (c) 2018 Fraunhofer SIT sponsored by Infineon Technologies AG
 # All rights reserved.
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-# THE POSSIBILITY OF SUCH DAMAGE.
-#;**********************************************************************;
+
 AC_INIT([tpm2-tss],
-        [2.1.0_rc0],
+        [2.2.0_rc1],
         [https://github.com/tpm2-software/tpm2-tss/issues],
         [],
         [https://github.com/tpm2-software/tpm2-tss])
 AC_CONFIG_MACRO_DIR([m4])
-${CFLAGS=""}
+: ${CFLAGS=""}
 AC_PROG_CC
 LT_INIT()
 AM_INIT_AUTOMAKE([foreign
@@ -42,6 +20,23 @@ AC_CONFIG_FILES([Makefile Doxyfile])
 
 # propagate configure arguments to distcheck
 AC_SUBST([DISTCHECK_CONFIGURE_FLAGS],[$ac_configure_args])
+
+AC_CANONICAL_HOST
+
+# Check OS and set library and compile flags accordingly
+case "${host_os}" in
+    *nto-qnx*)
+        ADD_COMPILER_FLAG([-D_QNX_SOURCE])
+        LIBDL_LDFLAGS=""
+        LIBSOCKET_LDFLAGS="-lsocket"
+        ;;
+    *)
+        LIBDL_LDFLAGS="-ldl"
+        LIBSOCKET_LDFLAGS=""
+        ;;
+esac
+AC_SUBST([LIBDL_LDFLAGS])
+AC_SUBST([LIBSOCKET_LDFLAGS])
 
 AC_ARG_ENABLE([unit],
             [AS_HELP_STRING([--enable-unit],
@@ -75,11 +70,20 @@ AC_ARG_ENABLE([tcti-device-async],
 AS_IF([test "x$enable_tcti_device_async" = "xyes"],
 	AC_DEFINE([TCTI_ASYNC],[1]))
 
+AC_ARG_ENABLE([tcti-partial-reads],
+    AS_HELP_STRING([--enable-tcti-partial-reads],
+	           [Enable partial reads for TCTI device
+		    (note: This needs to be supported by the kernel driver). default is no]),
+    [enable_tcti_partial_reads=$enableval],
+    [enable_tcti_partial_reads=no])
+AS_IF([test "x$enable_tcti_partial_reads" = "xyes"],
+	AC_DEFINE([TCTI_PARTIAL_READ],[1]))
+
 AC_ARG_WITH([crypto],
             [AS_HELP_STRING([--with-crypto={gcrypt,ossl}],
-                            [sets the ESAPI crypto backend (default is gcrypt)])],
+                            [sets the ESAPI crypto backend (default is OpenSSL)])],
             [],
-            [with_crypto=gcrypt])
+            [with_crypto=ossl])
 
 AM_CONDITIONAL(ESYS_OSSL, test "x$with_crypto" = "xossl")
 AM_CONDITIONAL(ESYS_GCRYPT, test "x$with_crypto" = "xgcrypt")
@@ -163,11 +167,11 @@ AC_ARG_ENABLE([integration],
     [enable_integration=no])
 AS_IF([test "x$enable_integration" = "xyes"],
       [ERROR_IF_NO_PROG([tpm_server])
-       ERROR_IF_NO_PROG([netstat])
+       ERROR_IF_NO_PROG([ss])
        ERROR_IF_NO_PROG([ps])
        ERROR_IF_NO_PROG([echo])
        ERROR_IF_NO_PROG([kill])
-       ERROR_IF_NO_PROG([nohup])
+       ERROR_IF_NO_PROG([stdbuf])
        ERROR_IF_NO_PROG([sleep])
        ERROR_IF_NO_PROG([cat])
        ERROR_IF_NO_PROG([realpath])
@@ -189,57 +193,68 @@ AM_CONDITIONAL([ENABLE_INTEGRATION],[test "x$enable_integration" = "xyes"])
 
 gl_LD_VERSION_SCRIPT
 
-AX_ADD_COMPILER_FLAG([-std=c99])
-AX_ADD_COMPILER_FLAG([-Wall])
-AX_ADD_COMPILER_FLAG([-Wextra])
-AX_ADD_COMPILER_FLAG([-Wformat-security])
-AX_ADD_COMPILER_FLAG([-Werror])
-AX_ADD_COMPILER_FLAG([-fstack-protector-all])
-AX_ADD_COMPILER_FLAG([-fpic])
-AX_ADD_COMPILER_FLAG([-fPIC])
-
-AX_ADD_PREPROC_FLAG([-D_DEFAULT_SOURCE])
-AX_ADD_PREPROC_FLAG([-D_BSD_SOURCE])
-AX_ADD_PREPROC_FLAG([-D_POSIX_SOURCE])
-
 AC_ARG_WITH([maxloglevel],
             [AS_HELP_STRING([--with-maxloglevel={none,error,warning,info,debug,trace}],
                             [sets the maximum log level (default is trace)])],
             [],
             [with_maxloglevel=trace])
-AS_IF([test "x$with_maxloglevel" = "xnone"],
-      AC_DEFINE_UNQUOTED([MAXLOGLEVEL], [0], ["Logging disabled"]),
-AS_IF([test "x$with_maxloglevel" = "xerror"],
-      AC_DEFINE_UNQUOTED([MAXLOGLEVEL], [2], ["Error log level"]),
-AS_IF([test "x$with_maxloglevel" = "xwarning"],
-      AC_DEFINE_UNQUOTED([MAXLOGLEVEL], [3], ["Warning log level"]),
-AS_IF([test "x$with_maxloglevel" = "xinfo"],
-      AC_DEFINE_UNQUOTED([MAXLOGLEVEL], [4], ["Info log level"]),
-AS_IF([test "x$with_maxloglevel" = "xdebug"],
-      AC_DEFINE_UNQUOTED([MAXLOGLEVEL], [5], ["Debug log level"]),
-AS_IF([test "x$with_maxloglevel" = "xtrace"],
-      AC_DEFINE_UNQUOTED([MAXLOGLEVEL], [6], ["Trace log level"]),
-AC_MSG_ERROR([Bad value for --with-maxloglevel])))))))
+AS_CASE(["x$with_maxloglevel"],
+        ["xnone"],
+        [AC_DEFINE_UNQUOTED([MAXLOGLEVEL], [0], ["Logging disabled"])],
+        ["xerror"],
+        [AC_DEFINE_UNQUOTED([MAXLOGLEVEL], [2], ["Error log level"])],
+        ["xwarning"],
+        [AC_DEFINE_UNQUOTED([MAXLOGLEVEL], [3], ["Warning log level"])],
+        ["xinfo"],
+        [AC_DEFINE_UNQUOTED([MAXLOGLEVEL], [4], ["Info log level"])],
+        ["xdebug"],
+        [AC_DEFINE_UNQUOTED([MAXLOGLEVEL], [5], ["Debug log level"])],
+        ["xtrace"],
+        [AC_DEFINE_UNQUOTED([MAXLOGLEVEL], [6], ["Trace log level"])],
+        [AC_MSG_ERROR([Bad value for --with-maxloglevel])])
 
 AC_ARG_ENABLE([debug],
             [AS_HELP_STRING([--enable-debug],
                             [build with debug info (default is no)])],
             [enable_debug=$enableval],
             [enable_debug=no])
-AS_IF([test "x$enable_debug" = "xyes"], AX_ADD_COMPILER_FLAG([-ggdb3 -Og]))
-AS_IF([test "x$enable_debug" = "xno"], [AX_ADD_PREPROC_FLAG([-U_FORTIFY_SOURCE])
-                                        AX_ADD_PREPROC_FLAG([-D_FORTIFY_SOURCE=2])
-                                        AX_ADD_COMPILER_FLAG([-g -O2])])
-AX_ADD_LINK_FLAG([-Wl,--no-undefined])
-AX_ADD_LINK_FLAG([-Wl,-z,noexecstack])
-AX_ADD_LINK_FLAG([-Wl,-z,now])
-AX_ADD_LINK_FLAG([-Wl,-z,relro])
+AS_IF([test "x$enable_debug" = "xyes"], ADD_COMPILER_FLAG([-ggdb3 -Og]))
+AC_ARG_ENABLE([defaultflags],
+              [AS_HELP_STRING([--disable-defaultflags],
+                              [Disable default preprocessor, compiler, and linker flags.])],
+              [enable_defaultflags=$enableval],
+              [enable_defaultflags=yes])
+AS_IF([test "x$enable_defaultflags" = "xyes"],
+      [
+      ADD_PREPROC_FLAG([-D_DEFAULT_SOURCE])
+      ADD_PREPROC_FLAG([-D_BSD_SOURCE])
+      ADD_PREPROC_FLAG([-D_POSIX_SOURCE])
+      AS_IF([test "x$enable_debug" = "xno"],
+            [
+            ADD_PREPROC_FLAG([-U_FORTIFY_SOURCE])
+            ADD_PREPROC_FLAG([-D_FORTIFY_SOURCE=2])
+            ADD_COMPILER_FLAG([-g -O2])
+            ])
+      ADD_COMPILER_FLAG([-std=c99])
+      ADD_COMPILER_FLAG([-Wall])
+      ADD_COMPILER_FLAG([-Wextra])
+      ADD_COMPILER_FLAG([-Wformat-security])
+      ADD_COMPILER_FLAG([-Werror])
+      ADD_COMPILER_FLAG([-fstack-protector-all])
+      ADD_COMPILER_FLAG([-fpic])
+      ADD_COMPILER_FLAG([-fPIC])
+      # work around GCC bug #53119
+      #   https://gcc.gnu.org/bugzilla/show_bug.cgi?id=53119
+      ADD_COMPILER_FLAG([-Wno-missing-braces])
+      ADD_COMPILER_FLAG([-Wstrict-overflow=5])
+      ADD_LINK_FLAG([-Wl,--no-undefined])
+      ADD_LINK_FLAG([-Wl,-z,noexecstack])
+      ADD_LINK_FLAG([-Wl,-z,now])
+      ADD_LINK_FLAG([-Wl,-z,relro])
+      ])
 
 AC_SUBST([PATH])
 
-# work around GCC bug #53119
-#   https://gcc.gnu.org/bugzilla/show_bug.cgi?id=53119
-AX_ADD_COMPILER_FLAG([-Wno-missing-braces])
 
 dnl ---------  Physical TPM device -----------------------
 
@@ -286,12 +301,15 @@ DX_HTML_FEATURE(ON)
 DX_CHM_FEATURE(OFF)
 DX_CHI_FEATURE(OFF)
 DX_MAN_FEATURE(ON)
-DX_RTF_FEATURE(OFF)
+DX_RTF_FEATURE(ON)
 DX_XML_FEATURE(OFF)
 DX_PDF_FEATURE(OFF)
 DX_PS_FEATURE(OFF)
-DX_INIT_DOXYGEN($PACKAGE_NAME, [Doxyfile], [doc/doxygen])
+DX_INIT_DOXYGEN($PACKAGE_NAME, [Doxyfile], [doxygen-doc])
 AM_CONDITIONAL(DOXYMAN, [test $DX_FLAG_man -eq 1])
+
+AS_IF([test "x$enable_doxygen_doc" != xno],
+      [ERROR_IF_NO_PROG([doxygen])])
 
 AX_CODE_COVERAGE
 
@@ -311,4 +329,6 @@ AC_MSG_RESULT([
     maxloglevel:        $with_maxloglevel
     doxygen:            $DX_FLAG_doc $enable_doxygen_doc
     tcti-device-async:  $enable_tcti_device_async
+    tcti-partial-read:  $enable_tcti_partial_reads
+    crypto backend:     $with_crypto
 ])

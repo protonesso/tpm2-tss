@@ -1,30 +1,7 @@
-#;**********************************************************************;
+# SPDX-License-Identifier: BSD-2
 # Copyright (c) 2015 - 2018 Intel Corporation
 # Copyright (c) 2018 Fraunhofer SIT sponsored by Infineon Technologies AG
 # All rights reserved.
-#
-# Redistribution and use in source and binary forms, with or without 
-# modification, are permitted provided that the following conditions are met:
-# 
-# 1. Redistributions of source code must retain the above copyright notice, 
-# this list of conditions and the following disclaimer.
-# 
-# 2. Redistributions in binary form must reproduce the above copyright notice, 
-# this list of conditions and the following disclaimer in the documentation 
-# and/or other materials provided with the distribution.
-# 
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN 
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF 
-# THE POSSIBILITY OF SUCH DAMAGE.
-#;**********************************************************************;
 
 TESTS_CFLAGS = $(AM_CFLAGS) $(LIBCRYPTO_CFLAGS) -I$(srcdir)/src/tss2-mu \
     -I$(srcdir)/src/tss2-sys -I$(srcdir)/src/tss2-esys \
@@ -62,12 +39,12 @@ test_helper_tpm_transientempty_SOURCES = test/helper/tpm_transientempty.c
 endif #ENABLE_INTEGRATION
 
 if ESYS_OSSL
-ESYSCRY_CFLAGS = -DOSSL
-ESYSCRY_LDFLAGS = -lssl -lcrypto -ldl
+esyscryCFLAGS = -DOSSL
+esyscryLDFLAGS = -lssl -lcrypto -ldl
 else
 if ESYS_GCRYPT
-ESYSCRY_CFLAGS =
-ESYSCRY_LDFLAGS = -lgcrypt -ldl
+esyscryCFLAGS =
+esyscryLDFLAGS = -lgcrypt -ldl
 endif
 endif
 
@@ -119,6 +96,7 @@ TESTS_INTEGRATION = \
     test/integration/sapi-encrypt-decrypt-2.int \
     test/integration/sapi-evict-ctrl.int \
     test/integration/sapi-get-random.int \
+    test/integration/sapi-stir-random.int \
     test/integration/sapi-hierarchy-change-auth.int \
     test/integration/sapi-abi-version.int \
     test/integration/sapi-pcr-extension.int \
@@ -216,7 +194,9 @@ ESYS_TESTS_INTEGRATION_OPTIONAL = \
     test/integration/esys-nv-certify.int \
     test/integration/esys-pcr-auth-value.int \
     test/integration/esys-pcr-basic.int \
-    test/integration/esys-policy-regression-opt.int \
+    test/integration/esys-policy-authorize-nv-opt.int \
+    test/integration/esys-policy-physical-presence-opt.int \
+    test/integration/esys-policy-template-opt.int \
     test/integration/esys-pp-commands.int \
     test/integration/esys-zgen-2phase.int
 
@@ -329,7 +309,7 @@ test_unit_TPMU_marshal_SOURCES = test/unit/TPMU-marshal.c
 if ESAPI
 test_unit_esys_context_null_CFLAGS = $(CMOCKA_CFLAGS) $(TESTS_CFLAGS)
 test_unit_esys_context_null_LDADD = $(CMOCKA_LIBS)  $(TESTS_LDADD)
-test_unit_esys_context_null_LDFLAGS = $(TESTS_LDFLAGS) $(ESYSCRY_LDFLAGS)
+test_unit_esys_context_null_LDFLAGS = $(TESTS_LDFLAGS) $(esyscryLDFLAGS)
 test_unit_esys_context_null_SOURCES = test/unit/esys-context-null.c
 
 test_unit_esys_default_tcti_CFLAGS = $(CMOCKA_CFLAGS) $(TESTS_CFLAGS) \
@@ -373,9 +353,9 @@ test_unit_esys_nulltcti_LDFLAGS = $(TESTS_LDFLAGS) -ldl
 test_unit_esys_nulltcti_SOURCES = test/unit/esys-nulltcti.c \
         src/tss2-esys/esys_context.c
 
-test_unit_esys_crypto_CFLAGS = $(CMOCKA_CFLAGS) $(TESTS_CFLAGS) $(ESYSCRY_CFLAGS)
+test_unit_esys_crypto_CFLAGS = $(CMOCKA_CFLAGS) $(TESTS_CFLAGS) $(esyscryCFLAGS)
 test_unit_esys_crypto_LDADD = $(CMOCKA_LIBS)  $(TESTS_LDADD)
-test_unit_esys_crypto_LDFLAGS = $(TESTS_LDFLAGS) $(ESYSCRY_LDFLAGS)
+test_unit_esys_crypto_LDFLAGS = $(TESTS_LDFLAGS) $(esyscryLDFLAGS)
 test_unit_esys_crypto_SOURCES = test/unit/esys-crypto.c \
         src/tss2-esys/esys_context.c
 
@@ -430,6 +410,11 @@ test_integration_sapi_evict_ctrl_int_SOURCES = \
 test_integration_sapi_sys_initialize_int_CFLAGS  = $(AM_CFLAGS) $(TESTS_CFLAGS)
 test_integration_sapi_sys_initialize_int_LDADD   = $(TESTS_LDADD)
 test_integration_sapi_sys_initialize_int_SOURCES = test/integration/sapi-sys-initialize.int.c \
+    test/integration/main-sapi.c
+
+test_integration_sapi_stir_random_int_CFLAGS  = $(AM_CFLAGS) $(TESTS_CFLAGS)
+test_integration_sapi_stir_random_int_LDADD   = $(TESTS_LDADD)
+test_integration_sapi_stir_random_int_SOURCES = test/integration/sapi-stir-random.int.c \
     test/integration/main-sapi.c
 
 test_integration_sapi_get_random_int_CFLAGS  = $(AM_CFLAGS) $(TESTS_CFLAGS)
@@ -882,12 +867,19 @@ test_integration_esys_object_changeauth_int_SOURCES = \
     test/integration/esys-object-changeauth.int.c \
     test/integration/main-esapi.c test/integration/test-esapi.h
 
-test_integration_esys_policy_authorize_int_CFLAGS  = $(TESTS_CFLAGS) $(ESYSCRY_CFLAGS)
+test_integration_esys_policy_authorize_int_CFLAGS  = $(TESTS_CFLAGS) $(esyscryCFLAGS)
 test_integration_esys_policy_authorize_int_LDADD   = $(TESTS_LDADD)
-test_integration_esys_policy_authorize_int_LDFLAGS = $(TESTS_LDFLAGS) $(ESYSCRY_LDFLAGS)
+test_integration_esys_policy_authorize_int_LDFLAGS = $(TESTS_LDFLAGS) $(esyscryLDFLAGS)
 test_integration_esys_policy_authorize_int_SOURCES = \
     test/integration/esys-policy-authorize.int.c \
     src/tss2-esys/esys_crypto.c \
+    test/integration/main-esapi.c test/integration/test-esapi.h
+
+test_integration_esys_policy_physical_presence_opt_int_CFLAGS  = $(TESTS_CFLAGS)
+test_integration_esys_policy_physical_presence_opt_int_LDADD   = $(TESTS_LDADD)
+test_integration_esys_policy_physical_presence_opt_int_LDFLAGS = $(TESTS_LDFLAGS)
+test_integration_esys_policy_physical_presence_opt_int_SOURCES = \
+    test/integration/esys-policy-physical-presence-opt.int.c \
     test/integration/main-esapi.c test/integration/test-esapi.h
 
 test_integration_esys_policy_regression_int_CFLAGS  = $(TESTS_CFLAGS)
@@ -897,14 +889,21 @@ test_integration_esys_policy_regression_int_SOURCES = \
     test/integration/esys-policy-regression.int.c \
     test/integration/main-esapi.c test/integration/test-esapi.h
 
-test_integration_esys_policy_regression_opt_int_CFLAGS  = $(TESTS_CFLAGS)
-test_integration_esys_policy_regression_opt_int_LDADD   = $(TESTS_LDADD)
-test_integration_esys_policy_regression_opt_int_LDFLAGS = $(TESTS_LDFLAGS)
-test_integration_esys_policy_regression_opt_int_SOURCES = \
-    test/integration/esys-policy-regression-opt.int.c \
+test_integration_esys_policy_authorize_nv_opt_int_CFLAGS  = $(TESTS_CFLAGS)
+test_integration_esys_policy_authorize_nv_opt_int_LDADD   = $(TESTS_LDADD)
+test_integration_esys_policy_authorize_nv_opt_int_LDFLAGS = $(TESTS_LDFLAGS)
+test_integration_esys_policy_authorize_nv_opt_int_SOURCES = \
+    test/integration/esys-policy-authorize-nv-opt.int.c \
     test/integration/main-esapi.c test/integration/test-esapi.h
 
-test_integration_esys_policy_ticket_int_CFLAGS  = $(TESTS_CFLAGS) $(ESYSCRY_CFLAGS)
+test_integration_esys_policy_template_opt_int_CFLAGS  = $(TESTS_CFLAGS)
+test_integration_esys_policy_template_opt_int_LDADD   = $(TESTS_LDADD)
+test_integration_esys_policy_template_opt_int_LDFLAGS = $(TESTS_LDFLAGS)
+test_integration_esys_policy_template_opt_int_SOURCES = \
+    test/integration/esys-policy-template-opt.int.c \
+    test/integration/main-esapi.c test/integration/test-esapi.h
+
+test_integration_esys_policy_ticket_int_CFLAGS  = $(TESTS_CFLAGS) $(esyscryCFLAGS)
 test_integration_esys_policy_ticket_int_LDADD   = $(TESTS_LDADD)
 test_integration_esys_policy_ticket_int_LDFLAGS = $(TESTS_LDFLAGS)
 test_integration_esys_policy_ticket_int_SOURCES = \

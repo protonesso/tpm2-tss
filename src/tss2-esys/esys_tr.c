@@ -10,6 +10,7 @@
 #include "esys_iutil.h"
 #define LOGMODULE esys
 #include "util/log.h"
+#include "util/aux_util.h"
 
 /** Serialization of an ESYS_TR into a byte buffer.
  *
@@ -355,7 +356,8 @@ Esys_TR_Close(ESYS_CONTEXT * esys_context, ESYS_TR * object)
  * every Esys_TR_Deserialize.
  * @param esys_context [in,out] The ESYS_CONTEXT.
  * @param esys_handle [in,out] The ESYS_TR for which to set the auth value.
- * @param authValue [in] The auth value to set for the ESYS_TR.
+ * @param authValue [in] The auth value to set for the ESYS_TR or NULL to zero
+ *        the auth.
  * @retval TSS2_RC_SUCCESS on Success.
  * @retval TSS2_ESYS_RC_BAD_REFERENCE if the esysContext is NULL.
  * @retval TSS2_ESYS_RC_BAD_TR if the ESYS_TR object is unknown to the
@@ -371,7 +373,12 @@ Esys_TR_SetAuth(ESYS_CONTEXT * esys_context, ESYS_TR esys_handle,
     r = esys_GetResourceObject(esys_context, esys_handle, &esys_object);
     if (r != TPM2_RC_SUCCESS)
         return r;
-    esys_object->auth = *authValue;
+
+    if (authValue == NULL)
+        esys_object->auth.size = 0;
+    else
+        esys_object->auth = *authValue;
+
     return TSS2_RC_SUCCESS;
 }
 
@@ -481,6 +488,8 @@ Esys_TRSess_SetAttributes(ESYS_CONTEXT * esys_context, ESYS_TR esys_handle,
     _ESYS_ASSERT_NON_NULL(esys_context);
     TSS2_RC r = esys_GetResourceObject(esys_context, esys_handle, &esys_object);
     return_if_error(r, "Object not found");
+
+    return_if_null(esys_context, "Object not found", TSS2_ESYS_RC_BAD_VALUE);
 
     if (esys_object->rsrc.rsrcType != IESYSC_SESSION_RSRC)
         return_error(TSS2_ESYS_RC_BAD_TR, "Object is not a session object");

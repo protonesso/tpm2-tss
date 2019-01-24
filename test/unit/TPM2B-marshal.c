@@ -138,7 +138,28 @@ tpm2b_marshal_buffer_null_with_offset(void **state)
     offset = 10;
     rc = Tss2_MU_TPM2B_ECC_POINT_Marshal(&point, NULL, buffer_size, &offset);
     assert_int_equal (rc, TSS2_RC_SUCCESS);
-    assert_int_equal (offset, 10 + 2 + 2 + TPM2_MAX_ECC_KEY_BYTES + 2 + TPM2_MAX_ECC_KEY_BYTES);
+    assert_int_equal (offset, 10 + 2 + 2 + sizeof(value) + 2 + sizeof(value2));
+    offset = 0;
+    rc = Tss2_MU_TPM2B_DIGEST_Marshal(&dgst, NULL, buffer_size, &offset);
+    assert_int_equal (rc, TSS2_RC_SUCCESS);
+    /*
+     * TSS MU spec states:
+     * If the 'buffer' parameter is NULL the implementation shall not write
+     * any marshaled data but the 'offset' parameter shall be updated as
+     * though it had.
+     * The offset of call with NULL and not NULL buffer will be compared.
+     */
+    uint8_t buffer[offset];
+
+    size_t offset1 = 0;
+    rc = Tss2_MU_TPM2B_DIGEST_Marshal(&dgst, NULL, buffer_size, &offset1);
+    assert_int_equal (rc, TSS2_RC_SUCCESS);
+
+    size_t offset2 = 0;
+    rc = Tss2_MU_TPM2B_DIGEST_Marshal(&dgst, buffer, buffer_size, &offset2);
+    assert_int_equal (rc, TSS2_RC_SUCCESS);
+    assert_int_equal(offset1, offset2);
+
 }
 
 /*
@@ -210,17 +231,17 @@ tpm2b_unmarshal_success(void **state)
     assert_int_equal (rc, TSS2_RC_SUCCESS);
     assert_int_equal (dgst.size, 4);
     ptr = (uint32_t *)dgst.buffer;
-    assert_int_equal (*ptr, value);
+    assert_int_equal (le32toh(*ptr), value);
     assert_int_equal (offset, 6);
 
     rc = Tss2_MU_TPM2B_ECC_POINT_Unmarshal(buffer, buffer_size, &offset, &point);
     assert_int_equal (rc, TSS2_RC_SUCCESS);
     assert_int_equal (point.point.x.size, 4);
     ptr = (uint32_t *)point.point.x.buffer;
-    assert_int_equal (*ptr, value);
+    assert_int_equal (le32toh(*ptr), value);
     assert_int_equal (point.point.y.size, 4);
     ptr = (uint32_t *)point.point.y.buffer;
-    assert_int_equal (*ptr, value2);
+    assert_int_equal (le32toh(*ptr), value2);
     assert_int_equal (offset, 20);
 }
 
@@ -251,17 +272,17 @@ tpm2b_unmarshal_success_offset(void **state)
     assert_int_equal (rc, TSS2_RC_SUCCESS);
     assert_int_equal (dgst.size, 4);
     ptr = (uint32_t *)dgst.buffer;
-    assert_int_equal (*ptr, value);
+    assert_int_equal (le32toh(*ptr), value);
     assert_int_equal (offset, 12);
 
     rc = Tss2_MU_TPM2B_ECC_POINT_Unmarshal(buffer, buffer_size, &offset, &point);
     assert_int_equal (rc, TSS2_RC_SUCCESS);
     assert_int_equal (point.point.x.size, 8);
     ptr2 = (uint64_t *)point.point.x.buffer;
-    assert_int_equal (*ptr2, value2);
+    assert_int_equal (le64toh(*ptr2), value2);
     assert_int_equal (point.point.y.size, 4);
     ptr = (uint32_t *)point.point.y.buffer;
-    assert_int_equal (*ptr, value3);
+    assert_int_equal (le32toh(*ptr), value3);
     assert_int_equal (offset, 30);
 }
 

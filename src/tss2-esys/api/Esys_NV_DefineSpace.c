@@ -13,6 +13,7 @@
 #include "esys_mu.h"
 #define LOGMODULE esys
 #include "util/log.h"
+#include "util/aux_util.h"
 
 /** Store command parameters inside the ESYS_CONTEXT for use during _Finish */
 static void store_input_parameters (
@@ -370,7 +371,10 @@ Esys_NV_DefineSpace_Finish(
         esysContext->in.NV_DefineSpace.publicInfo->nvPublic.nvIndex;
     nvHandleNode->rsrc.misc.rsrc_nv_pub =
         *esysContext->in.NV_DefineSpace.publicInfo;
-    nvHandleNode->auth = *esysContext->in.NV_DefineSpace.auth;
+    if (esysContext->in.NV_DefineSpace.auth == NULL)
+        nvHandleNode->auth.size = 0;
+    else
+        nvHandleNode->auth = *esysContext->in.NV_DefineSpace.auth;
     esysContext->state = _ESYS_STATE_INIT;
 
     return TSS2_RC_SUCCESS;

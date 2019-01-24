@@ -1,7 +1,8 @@
-['![Linux Build Status](https://travis-ci.org/tpm2-software/tpm2-tss.svg?branch=master)'](https://travis-ci.org/tpm2-software/tpm2-tss)
-['![Windows Build status](https://ci.appveyor.com/api/projects/status/2rdmyn1ndkiavngn?svg=true)'](https://ci.appveyor.com/project/tpm2-software/tpm2-tss)
-['![Coverity Scan](https://img.shields.io/coverity/scan/3997.svg)'](https://scan.coverity.com/projects/tpm2-tss)
-['![Coverage Status](https://coveralls.io/repos/github/tpm2-software/tpm2-tss/badge.svg?branch=master)'](https://coveralls.io/github/tpm2-software/tpm2-tss?branch=master)
+[![Linux Build Status](https://travis-ci.org/tpm2-software/tpm2-tss.svg?branch=master)](https://travis-ci.org/tpm2-software/tpm2-tss)
+[![Windows Build status](https://ci.appveyor.com/api/projects/status/2rdmyn1ndkiavngn?svg=true)](https://ci.appveyor.com/project/tpm2-software/tpm2-tss)
+[![Coverity Scan](https://img.shields.io/coverity/scan/3997.svg)](https://scan.coverity.com/projects/tpm2-tss)
+[![Coverage Status](https://coveralls.io/repos/github/tpm2-software/tpm2-tss/badge.svg?branch=master)](https://coveralls.io/github/tpm2-software/tpm2-tss?branch=master)
+[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/2332/badge)](https://bestpractices.coreinfrastructure.org/projects/2332)
 
 # Overview
 This repository hosts source code implementing the Trusted Computing Group's (TCG) TPM2 Software Stack (TSS).
@@ -26,7 +27,7 @@ It is expected that any number of libraries implementing the TCTI API will be im
 Currently this repository provides two TCTI implementations: libtss2-tcti-device and libtss2-tcti-mssim.
 The former should be used for direct access to the TPM through the Linux kernel driver.
 The latter implements the protocol exposed by the Microsoft software TPM2 simulator.
-* The [TCG TSS 2.0 Overview and Common Structures Specification](https://trustedcomputinggroup.org/wp-content/uploads/TSS_Overview_Common_Structures_Version-0.9_Revision-03_Review_030918.pdf) forms the basis for all implementations in this project. NOTE: We deviate from this draft of the specification by increasing the value of TPM2_NUM_PCR_BANKS from 3 to 16 to ensure compatibility with TPM2 implementations that have enabled a lareger than typical number of PCR banks. This larger value for TPM2_NUM_PCR_BANKS is expected to be included in a future revision of the specification.
+* The [TCG TSS 2.0 Overview and Common Structures Specification](https://trustedcomputinggroup.org/wp-content/uploads/TSS_Overview_Common_Structures_Version-0.9_Revision-03_Review_030918.pdf) forms the basis for all implementations in this project. NOTE: We deviate from this draft of the specification by increasing the value of TPM2_NUM_PCR_BANKS from 3 to 16 to ensure compatibility with TPM2 implementations that have enabled a larger than typical number of PCR banks. This larger value for TPM2_NUM_PCR_BANKS is expected to be included in a future revision of the specification.
 
 # Build and Installation Instructions:
 Instructions to build and install tpm2-tss are available in the [INSTALL](INSTALL.md) file.
@@ -34,6 +35,8 @@ Instructions to build and install tpm2-tss are available in the [INSTALL](INSTAL
 # Getting in Touch:
 If you're looking to discuss the source code in this project or get some questions answered you should join the 01.org TPM2 mailing list: https://lists.01.org/mailman/listinfo/tpm2.
 We also have an IRC channel set up on [FreeNode](https://freenode.net/) called \#tpm2.0-tss.
+
+In case you want to contribute to the project, please also have a look at the [Contribution Guidelines](CONTRIBUTING.md).
 
 # Test Suite
 This repository contains a test suite intended to exercise the TCTI, SAPI and ESAPI code.
@@ -58,7 +61,7 @@ To test the various TCTI, SAPI and ESAPI api calls, unit and integration tests c
 be run by configuring the build to enable unit testing and running the "check"
 build target. It is recommended to use a simulator for testing, and the
 simulator will be automatically launched by the tests. Please review the
-dependency list in ![INSTALL](INSTALL.md) for dependencies when building
+dependency list in [INSTALL](INSTALL.md) for dependencies when building
 the test suite.
 ```
 $ ./configure --enable-unit --enable-integration
@@ -73,10 +76,8 @@ NOTE: The unit and integration tests can be enabled independently.
 The --enable-unit option controls unit tests, and --enable-integration
 controls the integration tests.
 
-# Project Code Block Diagram
-![Architecture/Block Diagram](doc/arch.md)
-
-## SAPI library, TAB/RM, and Test Code Block Diagram:
+# [Architecture/Block Diagram](doc/arch.md)
+SAPI library, TAB/RM, and Test Code Block Diagram:
 ![Architecture Block Diagram](doc/TSS%20block%20diagram.png)
 
 # Project Layout

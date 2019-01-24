@@ -11,6 +11,7 @@
 #include "esys_iutil.h"
 #define LOGMODULE test
 #include "util/log.h"
+#include "util/aux_util.h"
 
 /** Test the ESAPI commands: HMAC_Start, SequenceUpdate, and SequenceComplete.
  *
@@ -156,6 +157,67 @@ test_esys_hmacsequencestart(ESYS_CONTEXT * esys_context)
 
     TPM2B_DIGEST *result;
     TPMT_TK_HASHCHECK *validation;
+
+    r = Esys_SequenceComplete(esys_context,
+                              sequenceHandle,
+#ifdef TEST_SESSION
+                              session,
+#else
+                              ESYS_TR_PASSWORD,
+#endif
+                              ESYS_TR_NONE,
+                              ESYS_TR_NONE,
+                              &buffer,
+                              TPM2_RH_OWNER,
+                              &result,
+                              &validation
+                              );
+    goto_if_error(r, "Error: SequenceComplete", error);
+
+#ifdef TEST_SESSION
+    r = Esys_FlushContext(esys_context, session);
+    goto_if_error(r, "Error: FlushContext", error);
+#endif
+
+    /* Check HMAC_Start with auth equal NULL */
+
+ #ifdef TEST_SESSION
+    r = Esys_StartAuthSession(esys_context, ESYS_TR_NONE, ESYS_TR_NONE,
+                              ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
+                              &nonceCaller,
+                              TPM2_SE_HMAC, &symmetric, TPM2_ALG_SHA1,
+                              &session);
+
+    goto_if_error(r, "Error: During initialization of session", error);
+#endif /* TEST_SESSION */
+
+    r = Esys_HMAC_Start(esys_context,
+                        primaryHandle,
+#ifdef TEST_SESSION
+                        session,
+#else
+                        ESYS_TR_PASSWORD,
+#endif
+                        ESYS_TR_NONE,
+                        ESYS_TR_NONE,
+                        NULL,
+                        hashAlg,
+                        &sequenceHandle
+                        );
+    goto_if_error(r, "Error: HashSequenceStart", error);
+
+    r = Esys_SequenceUpdate(esys_context,
+                            sequenceHandle,
+#ifdef TEST_SESSION
+                            session,
+#else
+                            ESYS_TR_PASSWORD,
+#endif
+                            ESYS_TR_NONE,
+                            ESYS_TR_NONE,
+                            &buffer
+                            );
+    goto_if_error(r, "Error: SequenceUpdate", error);
 
     r = Esys_SequenceComplete(esys_context,
                               sequenceHandle,

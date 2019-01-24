@@ -13,6 +13,7 @@
 #include "esys_mu.h"
 #define LOGMODULE esys
 #include "util/log.h"
+#include "util/aux_util.h"
 
 /** Store command parameters inside the ESYS_CONTEXT for use during _Finish */
 static void store_input_parameters (
@@ -206,7 +207,8 @@ Esys_EventSequenceComplete_Async(
     iesys_compute_session_value(esysContext->session_tab[0],
                 &pcrHandleNode->rsrc.name, &pcrHandleNode->auth);
     iesys_compute_session_value(esysContext->session_tab[1],
-                &sequenceHandleNode->rsrc.name, &sequenceHandleNode->auth);
+                sequenceHandleNode ? &sequenceHandleNode->rsrc.name : NULL,
+                sequenceHandleNode ? &sequenceHandleNode->auth : NULL);
     iesys_compute_session_value(esysContext->session_tab[2], NULL, NULL);
 
     /* Generate the auth values and set them in the SAPI command buffer */

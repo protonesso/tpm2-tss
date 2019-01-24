@@ -13,6 +13,7 @@
 #include "esys_mu.h"
 #define LOGMODULE esys
 #include "util/log.h"
+#include "util/aux_util.h"
 
 /** Store command parameters inside the ESYS_CONTEXT for use during _Finish */
 static void store_input_parameters (
@@ -315,7 +316,10 @@ Esys_HierarchyChangeAuth_Finish(
     r = esys_GetResourceObject(esysContext, authHandle, &authHandleNode);
     return_if_error(r, "get resource");
 
-    authHandleNode->auth = *esysContext->in.HierarchyChangeAuth.newAuth;
+    if (esysContext->in.HierarchyChangeAuth.newAuth == NULL)
+        authHandleNode->auth.size = 0;
+    else
+        authHandleNode->auth = *esysContext->in.HierarchyChangeAuth.newAuth;
     iesys_compute_session_value(esysContext->session_tab[0],
                                 &authHandleNode->rsrc.name, &authHandleNode->auth);
 

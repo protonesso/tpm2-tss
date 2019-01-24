@@ -7,7 +7,7 @@ following sections describe them for the supported platforms.
 
 ## GNU/Linux:
 * GNU Autoconf
-* GNU Autoconf archive
+* GNU Autoconf Archive, version >= 2017.03.21
 * GNU Automake
 * GNU Libtool
 * C compiler
@@ -22,10 +22,9 @@ The following are dependencies only required when building test suites.
 * OpenSSL development libraries and header files
 * Unit test suite (see ./configure option --enable-unit):
 * cmocka unit test framework, version >= 1.0
-* netstat executable (usually in the net-tools package)
+* ss executable (usually in the iproute2 package)
 * Code coverage analysis:
 * lcov
-* autoconf-archives
 * uthash development libraries and header files
 
 Most users will not need to install these dependencies.
@@ -37,7 +36,7 @@ $ sudo apt -y install \
   autoconf-archive \
   libcmocka0 \
   libcmocka-dev \
-  net-tools \
+  iproute2 \
   build-essential \
   git \
   pkg-config \
@@ -49,9 +48,10 @@ $ sudo apt -y install \
   libgcrypt20-dev \
   libssl-dev \
   uthash-dev \
-  autoconf
+  autoconf \
+  gnulib
 ```
-Note: In some Ubuntu versions, the lcov and autoconf-archive packages are incompatible with each other. Recommend downloading autoconf-archives directly from upstream and copy ax_code_coverage.m4.
+Note: In some Ubuntu versions, the lcov and autoconf-archive packages are incompatible with each other. It is recommended to download autoconf-archive directly from upstream and copy `ax_code_coverage.m4` and `ax_prog_doxygen.m4` to the `m4/` subdirectory of your tpm2-tss directory.
 
 ### Fedora
 
@@ -80,6 +80,12 @@ To configure the tpm2-tss source code first run the bootstrap script, which
 generates list of source files, and creates the configure script:
 ```
 $ ./bootstrap
+```
+
+Any options specified to the bootstrap command are passed to `autoreconf(1)`. This is typically
+useful for specifying 3rd party M4 include paths via the `-I` option. For example on Ubuntu 16.04:
+```
+$ ./bootstrap -I /usr/share/gnulib/m4
 ```
 
 ## Configuring the Build
@@ -198,5 +204,5 @@ $ make doxygen-doc
 ```
 
 The generated documentation will appear here:
-* doc/html HTML format (start with file doc/html/index.html)
-* doc/rtf/refman.rtf RTF format
+* doxygen-doc/html HTML format (start with file doxygen-doc/html/index.html)
+* doxygen-doc/rtf/refman.rtf RTF format

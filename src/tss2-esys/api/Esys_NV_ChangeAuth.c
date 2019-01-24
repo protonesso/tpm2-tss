@@ -13,6 +13,7 @@
 #include "esys_mu.h"
 #define LOGMODULE esys
 #include "util/log.h"
+#include "util/aux_util.h"
 
 /** Store command parameters inside the ESYS_CONTEXT for use during _Finish */
 static void store_input_parameters (
@@ -311,7 +312,10 @@ Esys_NV_ChangeAuth_Finish(
     r = esys_GetResourceObject(esysContext, nvIndex, &nvIndexNode);
     return_if_error(r, "get resource");
 
-    nvIndexNode->auth = *esysContext->in.NV_ChangeAuth.newAuth;
+    if (esysContext->in.NV_ChangeAuth.newAuth == NULL)
+        nvIndexNode->auth.size = 0;
+    else
+        nvIndexNode->auth = *esysContext->in.NV_ChangeAuth.newAuth;
     iesys_compute_session_value(esysContext->session_tab[0],
                                 &nvIndexNode->rsrc.name, &nvIndexNode->auth);
 
