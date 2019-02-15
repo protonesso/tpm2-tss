@@ -573,15 +573,19 @@ iesys_cryptossl_pk_encrypt(TPM2B_PUBLIC * pub_tpm_key,
     RSA * rsa_key = NULL;
     EVP_PKEY *evp_rsa_key = NULL;
     EVP_PKEY_CTX *ctx = NULL;
-    BIGNUM* bne = BN_new();
+    BIGNUM* bne = NULL;
     int padding;
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-    BIGNUM *n = NULL;
-#endif
+    char *label_copy = NULL;
+
     if (!(hashAlg = get_ossl_hash_md(pub_tpm_key->publicArea.nameAlg))) {
         LOG_ERROR("Unsupported hash algorithm (%"PRIu16")",
                   pub_tpm_key->publicArea.nameAlg);
         return TSS2_ESYS_RC_NOT_IMPLEMENTED;
+    }
+
+    if (!(bne = BN_new())) {
+        goto_error(r, TSS2_ESYS_RC_MEMORY,
+                   "Could not allocate Big Number", cleanup);
     }
 
     switch (pub_tpm_key->publicArea.parameters.rsaDetail.scheme.scheme) {
@@ -625,10 +629,14 @@ iesys_cryptossl_pk_encrypt(TPM2B_PUBLIC * pub_tpm_key,
                    "Could not create evp key.", cleanup);
     }
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
-    rsa_key->n = BN_bin2bn(pub_tpm_key->publicArea.unique.rsa.buffer,
+    if (!BN_bin2bn(pub_tpm_key->publicArea.unique.rsa.buffer,
                            pub_tpm_key->publicArea.unique.rsa.size,
-                           NULL);
+                           rsa_key->n)) {
+        goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
+                   "Could not create rsa n.", cleanup);
+    }
 #else
+    BIGNUM *n = NULL;
     if (!(n = BN_bin2bn(pub_tpm_key->publicArea.unique.rsa.buffer,
                         pub_tpm_key->publicArea.unique.rsa.size,
                         NULL))) {
@@ -662,7 +670,14 @@ iesys_cryptossl_pk_encrypt(TPM2B_PUBLIC * pub_tpm_key,
                    "Could not set RSA passing.", cleanup);
     }
 
-    if (1 != EVP_PKEY_CTX_set0_rsa_oaep_label(ctx, label, strlen(label)+1)) {
+    label_copy = OPENSSL_strdup(label);
+    if (!label_copy) {
+        goto_error(r, TSS2_ESYS_RC_MEMORY,
+                   "Could not duplicate OAEP label", cleanup);
+    }
+
+    if (1 != EVP_PKEY_CTX_set0_rsa_oaep_label(ctx, label_copy, strlen(label_copy)+1)) {
+        OPENSSL_free(label_copy);
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
                    "Could not set RSA label.", cleanup);
     }
@@ -689,16 +704,13 @@ iesys_cryptossl_pk_encrypt(TPM2B_PUBLIC * pub_tpm_key,
                    "Could not encrypt data.", cleanup);
     }
 
-    return TSS2_RC_SUCCESS;
+    r = TSS2_RC_SUCCESS;
 
  cleanup:
     OSSL_FREE(ctx, EVP_PKEY_CTX);
-    OSSL_FREE(rsa_key, RSA);
     OSSL_FREE(evp_rsa_key, EVP_PKEY);
+    OSSL_FREE(rsa_key, RSA);
     OSSL_FREE(bne, BN);
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-    OSSL_FREE(n, BN);
-#endif
     return r;
 }
 
@@ -794,6 +806,7 @@ iesys_cryptossl_get_ecdh_point(TPM2B_PUBLIC *key,
     EC_KEY *eph_ec_key = NULL;            /* Ephemeral ec key of application */
     const EC_POINT *eph_pub_key = NULL;   /* Public part of ephemeral key */
     EC_POINT *tpm_pub_key = NULL;         /* Public part of TPM key */
+    EC_POINT *mul_eph_tpm = NULL;
     BIGNUM *bn_x = NULL;
     BIGNUM *bn_y = NULL;
     size_t key_size;
@@ -893,7 +906,6 @@ iesys_cryptossl_get_ecdh_point(TPM2B_PUBLIC *key,
     goto_if_error(r, "Convert TPM pub point to ossl pub point", cleanup);
 
     /* Multiply the ephemeral private key with TPM public key */
-    EC_POINT *mul_eph_tpm = NULL;
     const BIGNUM * eph_priv_key = EC_KEY_get0_private_key(eph_ec_key);
 
     if (!(mul_eph_tpm = EC_POINT_new(group))) {
@@ -927,11 +939,14 @@ iesys_cryptossl_get_ecdh_point(TPM2B_PUBLIC *key,
     *out_size = offset;
 
  cleanup:
+    OSSL_FREE(mul_eph_tpm, EC_POINT);
+    OSSL_FREE(tpm_pub_key, EC_POINT);
     OSSL_FREE(group,EC_GROUP);
     OSSL_FREE(eph_ec_key, EC_KEY);
     /* Note: free of eph_pub_key already done by free of eph_ec_key */
     OSSL_FREE(bn_x, BN);
     OSSL_FREE(bn_y, BN);
+    OSSL_FREE(bctx, BN_CTX);
     return r;
 }
 
