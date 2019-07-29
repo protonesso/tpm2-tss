@@ -1,15 +1,18 @@
-/* SPDX-License-Identifier: BSD-2 */
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2015 - 2018 Intel Corporation
  * All rights reserved.
  */
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include <inttypes.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <inttypes.h>
 
 #ifndef _WIN32
 #include <sys/time.h>
@@ -486,7 +489,7 @@ tcti_mssim_init_context_data (
     TSS2_TCTI_SET_LOCALITY (tcti_common) = tcti_mssim_set_locality;
     TSS2_TCTI_MAKE_STICKY (tcti_common) = tcti_make_sticky_not_implemented;
     tcti_common->state = TCTI_STATE_TRANSMIT;
-    tcti_common->locality = 3;
+    tcti_common->locality = 0;
     memset (&tcti_common->header, 0, sizeof (tcti_common->header));
 }
 /*

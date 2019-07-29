@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: BSD-2 */
+/* SPDX-License-Identifier: BSD-2-Clause */
 /***********************************************************************
  * Copyright (c) 2015 - 2017, Intel Corporation
  *
@@ -789,6 +789,20 @@ Tss2_MU_TPMS_TAGGED_PROPERTY_Unmarshal(
     size_t          buffer_size,
     size_t         *offset,
     TPMS_TAGGED_PROPERTY *dest);
+
+TSS2_RC
+Tss2_MU_TPMS_TAGGED_POLICY_Marshal(
+    TPMS_TAGGED_POLICY  const *src,
+    uint8_t         buffer[],
+    size_t          buffer_size,
+    size_t         *offset);
+
+TSS2_RC
+Tss2_MU_TPMS_TAGGED_POLICY_Unmarshal(
+    uint8_t const   buffer[],
+    size_t          buffer_size,
+    size_t         *offset,
+    TPMS_TAGGED_POLICY *dest);
 
 TSS2_RC
 Tss2_MU_TPMS_CLOCK_INFO_Marshal(

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: BSD-2 */
+/* SPDX-License-Identifier: BSD-2-Clause */
 /***********************************************************************;
  * Copyright (c) 2015 - 2018 Intel Corporation
  * All rights reserved.
@@ -17,7 +17,6 @@
 
 #define TPM2_MAX_COMMAND_SIZE  4096 /* maximum size of a command */
 #define TPM2_MAX_RESPONSE_SIZE 4096 /* maximum size of a response */
-#define TPM2_MAX_SESSION_NUM   3    /* this is the current maximum value */
 
 /* TPM constants for buffer sizes */
 #define TPM2_NUM_PCR_BANKS      16
@@ -101,6 +100,7 @@ typedef UINT16 TPM2_ALG_ID;
 #define TPM2_ALG_ECC                 ((TPM2_ALG_ID) 0x0023)
 #define TPM2_ALG_SYMCIPHER           ((TPM2_ALG_ID) 0x0025)
 #define TPM2_ALG_CAMELLIA            ((TPM2_ALG_ID) 0x0026)
+#define TPM2_ALG_CMAC                ((TPM2_ALG_ID) 0x003F)
 #define TPM2_ALG_CTR                 ((TPM2_ALG_ID) 0x0040)
 #define TPM2_ALG_SHA3_256            ((TPM2_ALG_ID) 0x0027)
 #define TPM2_ALG_SHA3_384            ((TPM2_ALG_ID) 0x0028)
@@ -998,6 +998,12 @@ typedef struct {
     UINT8 sizeofSelect; /* the size in octets of the pcrSelect array */
     BYTE pcrSelect[TPM2_PCR_SELECT_MAX]; /* the bit map of PCR with the identified property */
 } TPMS_TAGGED_PCR_SELECT;
+
+/* Definition of TPMS_TAGGED_POLICY Structure */
+typedef struct {
+    TPM2_HANDLE handle;
+    TPMT_HA policyHash;
+} TPMS_TAGGED_POLICY;
 
 /* Definition of TPML_CC Structure */
 typedef struct {

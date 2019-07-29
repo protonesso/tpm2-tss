@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: BSD-2 */
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*******************************************************************************
  * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG
  * All rights reserved.
@@ -9,7 +9,6 @@
 #include <stdbool.h>
 #include <inttypes.h>
 #include <string.h>
-
 #include "tss2_esys.h"
 
 #include "esys_int.h"
@@ -25,13 +24,6 @@ typedef struct {
     size_t size;                     /**< The digest size. */
     uint8_t digest[sizeof(TPMU_HA)]; /**< The digest. */
 } HASH_TAB_ITEM;
-
-bool cmp_UINT16 (const UINT16 *in1, const UINT16 *in2);
-bool cmp_BYTE (const BYTE *in1, const BYTE *in2);
-bool cmp_BYTE_array(const BYTE *in1, size_t count1, const BYTE *in2, size_t count2);
-bool cmp_TPM2B_DIGEST (const TPM2B_DIGEST *in1, const TPM2B_DIGEST *in2);
-bool cmp_TPM2B_NAME (const TPM2B_NAME *in1, const TPM2B_NAME *in2);
-bool cmp_TPM2B_AUTH (const TPM2B_AUTH *in1, const TPM2B_AUTH *in2);
 
 TSS2_RC init_session_tab(
     ESYS_CONTEXT *esysContext,
@@ -97,9 +89,7 @@ TSS2_RC iesys_encrypt_param(
     int *decryptNonceIdx);
 
 TSS2_RC iesys_decrypt_param(
-    ESYS_CONTEXT *esysContext,
-    const uint8_t *rpBuffer,
-    size_t rpBuffer_size);
+    ESYS_CONTEXT *esysContext);
 
 TSS2_RC iesys_check_rp_hmacs(
     ESYS_CONTEXT *esysContext,

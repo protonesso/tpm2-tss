@@ -1,9 +1,13 @@
-/* SPDX-License-Identifier: BSD-2 */
+/* SPDX-License-Identifier: BSD-2-Clause */
 /***********************************************************************
  * Copyright (c) 2015 - 2017, Intel Corporation
  *
  * All rights reserved.
  ***********************************************************************/
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include <inttypes.h>
 #include <string.h>
@@ -47,6 +51,13 @@ TSS2_RC Tss2_MU_##type##_Marshal(type const *src, uint8_t buffer[], \
              local_offset, \
              sizeof(src->size) + src->size); \
         return TSS2_MU_RC_INSUFFICIENT_BUFFER; \
+    } else if ((sizeof(type) - sizeof(src->size)) < src->size) { \
+        LOG_WARNING(\
+             "size: %u for buffer of " #type " is larger than max length" \
+             " of buffer: %zu", \
+             src->size, \
+             (sizeof(type) - sizeof(src->size))); \
+        return TSS2_MU_RC_BAD_SIZE; \
     } \
 \
     LOG_DEBUG(\
@@ -149,7 +160,7 @@ TSS2_RC Tss2_MU_##type##_Marshal(type const *src, uint8_t buffer[], \
                                  size_t buffer_size, size_t *offset) \
 { \
     size_t local_offset = 0; \
-    UINT8 *ptr; \
+    UINT8 *ptr = NULL; \
     TSS2_RC rc; \
 \
     if (src == NULL) { \
@@ -285,7 +296,7 @@ TSS2_RC Tss2_MU_##type##_Unmarshal(uint8_t const buffer[], size_t buffer_size, \
 }
 
 /*
- * These macros expand to (un)marshal functions for each of the TPMA types
+ * These macros expand to (un)marshal functions for each of the TPM2B types
  * the specification part 2.
  */
 TPM2B_MARSHAL  (TPM2B_DIGEST);

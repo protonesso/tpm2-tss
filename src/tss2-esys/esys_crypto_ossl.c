@@ -1,10 +1,12 @@
-/* SPDX-License-Identifier: BSD-2 */
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*******************************************************************************
  * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG
  * All rights reserved.
  ******************************************************************************/
 
-#define _GNU_SOURCE
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include <openssl/evp.h>
 #include <openssl/aes.h>
@@ -19,22 +21,12 @@
 
 #include "esys_iutil.h"
 #include "esys_mu.h"
-#define LOGMODULE esys
+#define LOGMODULE esys_crypto
 #include "util/log.h"
 #include "util/aux_util.h"
-#include "esys_crypto_ossl.h"
 
-static ENGINE *engine = NULL;
-
-ENGINE *get_engine()
-{
-    if (engine)
-        return engine;
-    engine = ENGINE_by_id("openssl");
-    return engine;
-}
-
-int BN_bn2binpad(const BIGNUM *bn, unsigned char *bin, int bin_length)
+static int
+iesys_bn2binpad(const BIGNUM *bn, unsigned char *bin, int bin_length)
 {
     int len_bn = BN_num_bytes(bn);
     int offset = bin_length - len_bn;
@@ -62,30 +54,6 @@ typedef struct _IESYS_CRYPTO_CONTEXT {
         } hmac; /**< the state variables for an hmac context */
     };
 } IESYS_CRYPTOSSL_CONTEXT;
-
-size_t
-hash_get_digest_size(TPM2_ALG_ID hashAlg)
-{
-    switch (hashAlg) {
-    case TPM2_ALG_SHA1:
-        return TPM2_SHA1_DIGEST_SIZE;
-        break;
-    case TPM2_ALG_SHA256:
-        return TPM2_SHA256_DIGEST_SIZE;
-        break;
-    case TPM2_ALG_SHA384:
-        return TPM2_SHA384_DIGEST_SIZE;
-        break;
-    case TPM2_ALG_SHA512:
-        return TPM2_SHA512_DIGEST_SIZE;
-        break;
-    case TPM2_ALG_SM3_256:
-        return TPM2_SM3_256_DIGEST_SIZE;
-        break;
-    default:
-        return 0;
-    }
-}
 
 const EVP_MD *
 get_ossl_hash_md(TPM2_ALG_ID hashAlg)
@@ -136,7 +104,7 @@ iesys_cryptossl_hash_start(IESYS_CRYPTO_CONTEXT_BLOB ** context,
                    "Unsupported hash algorithm (%"PRIu16")", cleanup, hashAlg);
     }
 
-    if (!(mycontext->hash.hash_len = hash_get_digest_size(hashAlg))) {
+    if (iesys_crypto_hash_get_digest_size(hashAlg, &mycontext->hash.hash_len)) {
         goto_error(r, TSS2_ESYS_RC_NOT_IMPLEMENTED,
                    "Unsupported hash algorithm (%"PRIu16")", cleanup, hashAlg);
     }
@@ -147,7 +115,7 @@ iesys_cryptossl_hash_start(IESYS_CRYPTO_CONTEXT_BLOB ** context,
 
     if (1 != EVP_DigestInit_ex(mycontext->hash.ossl_context,
                                mycontext->hash.ossl_hash_alg,
-                               get_engine())) {
+                               NULL)) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE, "Errror EVP_DigestInit_ex", cleanup);
     }
 
@@ -331,7 +299,7 @@ iesys_cryptossl_hmac_start(IESYS_CRYPTO_CONTEXT_BLOB ** context,
                    "Unsupported hash algorithm (%"PRIu16")", cleanup, hashAlg);
     }
 
-    if (!(mycontext->hmac.hmac_len = hash_get_digest_size(hashAlg))) {
+    if (iesys_crypto_hash_get_digest_size(hashAlg, &mycontext->hmac.hmac_len)) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
                    "Unsupported hash algorithm (%"PRIu16")", cleanup, hashAlg);
     }
@@ -341,13 +309,13 @@ iesys_cryptossl_hmac_start(IESYS_CRYPTO_CONTEXT_BLOB ** context,
                    "Error EVP_MD_CTX_create", cleanup);
     }
 
-    if (!(hkey = EVP_PKEY_new_mac_key(EVP_PKEY_HMAC, get_engine(), key, size))) {
+    if (!(hkey = EVP_PKEY_new_mac_key(EVP_PKEY_HMAC, NULL, key, size))) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
                    "EVP_PKEY_new_mac_key", cleanup);
     }
 
     if(1 != EVP_DigestSignInit(mycontext->hmac.ossl_context, NULL,
-                               mycontext->hmac.ossl_hash_alg, get_engine(), hkey)) {
+                               mycontext->hmac.ossl_hash_alg, NULL, hkey)) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
                    "DigestSignInit", cleanup);
     }
@@ -528,20 +496,31 @@ iesys_cryptossl_hmac_abort(IESYS_CRYPTO_CONTEXT_BLOB ** context)
  * @param[out] nonce The TPM2B structure for the random data (caller-allocated).
  * @param[in] num_bytes The number of bytes to be generated.
  * @retval TSS2_RC_SUCCESS on success.
+ *
+ * NOTE: the TPM should not be used to obtain the random data
  */
 TSS2_RC
 iesys_cryptossl_random2b(TPM2B_NONCE * nonce, size_t num_bytes)
 {
+    const RAND_METHOD *rand_save = RAND_get_rand_method();
+
     if (num_bytes == 0) {
         nonce->size = sizeof(TPMU_HA);
     } else {
         nonce->size = num_bytes;
     }
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+    RAND_set_rand_method(RAND_OpenSSL());
+#else
+    RAND_set_rand_method(RAND_SSLeay());
+#endif
     if (1 != RAND_bytes(&nonce->buffer[0], nonce->size)) {
+        RAND_set_rand_method(rand_save);
         return_error(TSS2_ESYS_RC_GENERAL_FAILURE,
                      "Failure in random number generator.");
     }
-
+    RAND_set_rand_method(rand_save);
     return TSS2_RC_SUCCESS;
 }
 
@@ -568,6 +547,13 @@ iesys_cryptossl_pk_encrypt(TPM2B_PUBLIC * pub_tpm_key,
                            BYTE * out_buffer,
                            size_t * out_size, const char *label)
 {
+    const RAND_METHOD *rand_save = RAND_get_rand_method();
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+    RAND_set_rand_method(RAND_OpenSSL());
+#else
+    RAND_set_rand_method(RAND_SSLeay());
+#endif
+
     TSS2_RC r = TSS2_RC_SUCCESS;
     const EVP_MD * hashAlg = NULL;
     RSA * rsa_key = NULL;
@@ -580,6 +566,7 @@ iesys_cryptossl_pk_encrypt(TPM2B_PUBLIC * pub_tpm_key,
     if (!(hashAlg = get_ossl_hash_md(pub_tpm_key->publicArea.nameAlg))) {
         LOG_ERROR("Unsupported hash algorithm (%"PRIu16")",
                   pub_tpm_key->publicArea.nameAlg);
+        RAND_set_rand_method(rand_save);
         return TSS2_ESYS_RC_NOT_IMPLEMENTED;
     }
 
@@ -655,7 +642,7 @@ iesys_cryptossl_pk_encrypt(TPM2B_PUBLIC * pub_tpm_key,
                    "Could not set rsa key.", cleanup);
     }
 
-    if (!(ctx = EVP_PKEY_CTX_new(evp_rsa_key, get_engine()))) {
+    if (!(ctx = EVP_PKEY_CTX_new(evp_rsa_key, NULL))) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
                    "Could not create evp context.", cleanup);
     }
@@ -711,6 +698,7 @@ iesys_cryptossl_pk_encrypt(TPM2B_PUBLIC * pub_tpm_key,
     OSSL_FREE(evp_rsa_key, EVP_PKEY);
     OSSL_FREE(rsa_key, RSA);
     OSSL_FREE(bne, BN);
+    RAND_set_rand_method(rand_save);
     return r;
 }
 
@@ -722,16 +710,13 @@ iesys_cryptossl_pk_encrypt(TPM2B_PUBLIC * pub_tpm_key,
  * @retval TSS2_RC_SUCCESS on success.
  * @retval TSS2_ESYS_RC_GENERAL_FAILURE The internal crypto engine failed.
  */
-TSS2_RC
+static TSS2_RC
 tpm_pub_to_ossl_pub(EC_GROUP *group, TPM2B_PUBLIC *key, EC_POINT **tpm_pub_key)
 {
 
     TSS2_RC r = TSS2_RC_SUCCESS;
     BIGNUM *bn_x = NULL;
     BIGNUM *bn_y = NULL;
-    BN_CTX *bctx = NULL;
-
-    bctx = BN_CTX_new();
 
     /* Create the big numbers for the coordinates of the point */
     if (!(bn_x = BN_bin2bn(&key->publicArea.unique.ecc.x.buffer[0],
@@ -756,13 +741,13 @@ tpm_pub_to_ossl_pub(EC_GROUP *group, TPM2B_PUBLIC *key, EC_POINT **tpm_pub_key)
 
     if (1 != EC_POINT_set_affine_coordinates_GFp(group,
                                                  *tpm_pub_key, bn_x,
-                                                 bn_y, bctx)) {
+                                                 bn_y, NULL)) {
         OSSL_FREE(*tpm_pub_key, EC_POINT);
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
                    "Set affine coordinates", cleanup);
     }
 
-    if (1 != EC_POINT_is_on_curve(group, *tpm_pub_key, bctx)) {
+    if (1 != EC_POINT_is_on_curve(group, *tpm_pub_key, NULL)) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
                    "The TPM point is not on the curve", cleanup);
     }
@@ -770,7 +755,6 @@ tpm_pub_to_ossl_pub(EC_GROUP *group, TPM2B_PUBLIC *key, EC_POINT **tpm_pub_key)
  cleanup:
     OSSL_FREE(bn_x, BN);
     OSSL_FREE(bn_y, BN);
-    OSSL_FREE(bctx, BN_CTX);
 
     return r;
 }
@@ -801,7 +785,6 @@ iesys_cryptossl_get_ecdh_point(TPM2B_PUBLIC *key,
                                size_t * out_size)
 {
     TSS2_RC r = TSS2_RC_SUCCESS;
-    BN_CTX *bctx = NULL;                  /* Context used for big number operations */
     EC_GROUP *group = NULL;               /* Group defines the used curve */
     EC_KEY *eph_ec_key = NULL;            /* Ephemeral ec key of application */
     const EC_POINT *eph_pub_key = NULL;   /* Public part of ephemeral key */
@@ -863,17 +846,12 @@ iesys_cryptossl_get_ecdh_point(TPM2B_PUBLIC *key,
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE, "Get public key", cleanup);
     }
 
-    if (1 != EC_POINT_is_on_curve(group, eph_pub_key, bctx)) {
+    if (1 != EC_POINT_is_on_curve(group, eph_pub_key, NULL)) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
                    "Ephemeral public key is on curve",cleanup);
     }
 
     /* Write affine coordinates of ephemeral pub key to TPM point Q */
-    if (!(bctx = BN_CTX_new())) {
-        goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
-                   "Create bignum context", cleanup);
-    }
-
     if (!(bn_x = BN_new())) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE, "Create bignum", cleanup);
     }
@@ -883,17 +861,17 @@ iesys_cryptossl_get_ecdh_point(TPM2B_PUBLIC *key,
     }
 
     if (1 != EC_POINT_get_affine_coordinates_GFp(group, eph_pub_key, bn_x,
-                                                 bn_y, bctx)) {
+                                                 bn_y, NULL)) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
                    "Get affine x coordinate", cleanup);
     }
 
-    if (1 != BN_bn2binpad(bn_x, &Q->x.buffer[0], key_size)) {
+    if (1 != iesys_bn2binpad(bn_x, &Q->x.buffer[0], key_size)) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
                    "Write big num byte buffer", cleanup);
     }
 
-    if (1 != BN_bn2binpad(bn_y, &Q->y.buffer[0], key_size)) {
+    if (1 != iesys_bn2binpad(bn_y, &Q->y.buffer[0], key_size)) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
                    "Write big num byte buffer", cleanup);
     }
@@ -913,19 +891,19 @@ iesys_cryptossl_get_ecdh_point(TPM2B_PUBLIC *key,
     }
 
     if (1 != EC_POINT_mul(group, mul_eph_tpm, NULL,
-                          tpm_pub_key, eph_priv_key, bctx)) {
+                          tpm_pub_key, eph_priv_key, NULL)) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
                    "ec point multiplication", cleanup);
     }
 
     /* Write the x-part of the affine coordinate to Z */
     if (1 != EC_POINT_get_affine_coordinates_GFp(group, mul_eph_tpm, bn_x,
-                                                 bn_y, bctx)) {
+                                                 bn_y, NULL)) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
                    "Get affine x coordinate", cleanup);
     }
 
-    if (1 != BN_bn2binpad(bn_x, &Z->buffer[0], key_size)) {
+    if (1 != iesys_bn2binpad(bn_x, &Z->buffer[0], key_size)) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
                    "Write big num byte buffer", cleanup);
     }
@@ -946,7 +924,6 @@ iesys_cryptossl_get_ecdh_point(TPM2B_PUBLIC *key,
     /* Note: free of eph_pub_key already done by free of eph_ec_key */
     OSSL_FREE(bn_x, BN);
     OSSL_FREE(bn_y, BN);
-    OSSL_FREE(bctx, BN_CTX);
     return r;
 }
 
@@ -1013,11 +990,11 @@ iesys_cryptossl_sym_aes_encrypt(uint8_t * key,
                    "Initialize cipher context", cleanup);
     }
 
-    if (1 != EVP_EncryptInit_ex(ctx, cipher_alg, get_engine(), key, iv)) {
+    if (1 != EVP_EncryptInit_ex(ctx, cipher_alg, NULL, key, iv)) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
                    "Initialize cipher operation", cleanup);
     }
-    if (1 != EVP_EncryptInit_ex(ctx, NULL, get_engine(), key, iv)) {
+    if (1 != EVP_EncryptInit_ex(ctx, NULL, NULL, key, iv)) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE, "Set key and iv", cleanup);
     }
 
@@ -1101,12 +1078,12 @@ iesys_cryptossl_sym_aes_decrypt(uint8_t * key,
 
     LOGBLOB_TRACE(buffer, buffer_size, "IESYS AES input");
 
-    if (1 != EVP_DecryptInit_ex(ctx, cipher_alg, get_engine(), key, iv)) {
+    if (1 != EVP_DecryptInit_ex(ctx, cipher_alg, NULL, key, iv)) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
                    "Initialize cipher operation", cleanup);
     }
 
-    if (1 != EVP_DecryptInit_ex(ctx, NULL, get_engine(), key, iv)) {
+    if (1 != EVP_DecryptInit_ex(ctx, NULL, NULL, key, iv)) {
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE, "Set key and iv", cleanup);
     }
 

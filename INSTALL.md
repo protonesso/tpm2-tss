@@ -13,19 +13,19 @@ following sections describe them for the supported platforms.
 * C compiler
 * C library development libraries and header files
 * pkg-config
-* uriparser development libraries and header files
-* libgcrypt development libraries and header files
-* uthash development libraries and header files
+* doxygen
+* OpenSSL development libraries and header files
 
 The following are dependencies only required when building test suites.
 * Integration test suite (see ./configure option --enable-integration):
-* OpenSSL development libraries and header files
+    - uthash development libraries and header files
+    - ps executable (usually in the procps package)
+    - ss executable (usually in the iproute2 package)
+    - tpm_server executable (from https://sourceforge.net/projects/ibmswtpm2/)
 * Unit test suite (see ./configure option --enable-unit):
-* cmocka unit test framework, version >= 1.0
-* ss executable (usually in the iproute2 package)
+    - cmocka unit test framework, version >= 1.0
 * Code coverage analysis:
-* lcov
-* uthash development libraries and header files
+    - lcov
 
 Most users will not need to install these dependencies.
 
@@ -36,20 +36,20 @@ $ sudo apt -y install \
   autoconf-archive \
   libcmocka0 \
   libcmocka-dev \
+  procps \
   iproute2 \
   build-essential \
   git \
   pkg-config \
   gcc \
-  g++ \
-  m4 \
   libtool \
   automake \
-  libgcrypt20-dev \
   libssl-dev \
   uthash-dev \
   autoconf \
   doxygen
+  doxygen \
+  libltdl-dev
 ```
 Note: In some Ubuntu versions, the lcov and autoconf-archive packages are incompatible with each other. It is recommended to download autoconf-archive directly from upstream and copy `ax_code_coverage.m4` and `ax_prog_doxygen.m4` to the `m4/` subdirectory of your tpm2-tss directory.
 

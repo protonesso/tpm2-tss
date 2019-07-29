@@ -1,8 +1,12 @@
-/* SPDX-License-Identifier: BSD-2 */
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*******************************************************************************
  * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG
  * All rights reserved.
  ******************************************************************************/
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include "tss2_mu.h"
 #include "tss2_sys.h"
@@ -18,11 +22,9 @@
 /** Store command parameters inside the ESYS_CONTEXT for use during _Finish */
 static void store_input_parameters (
     ESYS_CONTEXT *esysContext,
-    ESYS_TR nvIndex,
-    ESYS_TR platform)
+    ESYS_TR nvIndex)
 {
-    esysContext->in.NV_UndefineSpaceSpecial.nvIndex = nvIndex;
-    esysContext->in.NV_UndefineSpaceSpecial.platform = platform;
+    esysContext->in.NV.nvIndex = nvIndex;
 }
 
 /** One-Call function for TPM2_NV_UndefineSpaceSpecial
@@ -169,10 +171,10 @@ Esys_NV_UndefineSpaceSpecial_Async(
         return r;
     esysContext->state = _ESYS_STATE_INTERNALERROR;
 
-    /* Check and store input parameters */
+    /* Check input parameters */
     r = check_session_feasibility(shandle1, shandle2, shandle3, 1);
     return_state_if_error(r, _ESYS_STATE_INIT, "Check session usage");
-    store_input_parameters(esysContext, nvIndex, platform);
+    store_input_parameters(esysContext, nvIndex);
 
     /* Retrieve the metadata objects for provided handles */
     r = esys_GetResourceObject(esysContext, nvIndex, &nvIndexNode);
@@ -205,8 +207,10 @@ Esys_NV_UndefineSpaceSpecial_Async(
                           "Error in computation of auth values");
 
     esysContext->authsCount = auths.count;
-    r = Tss2_Sys_SetCmdAuths(esysContext->sys, &auths);
-    return_state_if_error(r, _ESYS_STATE_INIT, "SAPI error on SetCmdAuths");
+    if (auths.count > 0) {
+        r = Tss2_Sys_SetCmdAuths(esysContext->sys, &auths);
+        return_state_if_error(r, _ESYS_STATE_INIT, "SAPI error on SetCmdAuths");
+    }
 
     /* Trigger execution and finish the async invocation */
     r = Tss2_Sys_ExecuteAsync(esysContext->sys);
@@ -262,7 +266,8 @@ Esys_NV_UndefineSpaceSpecial_Finish(
     }
 
     /* Check for correct sequence and set sequence to irregular for now */
-    if (esysContext->state != _ESYS_STATE_SENT) {
+    if (esysContext->state != _ESYS_STATE_SENT &&
+        esysContext->state != _ESYS_STATE_RESUBMISSION) {
         LOG_ERROR("Esys called in bad sequence.");
         return TSS2_ESYS_RC_BAD_SEQUENCE;
     }
@@ -280,18 +285,13 @@ Esys_NV_UndefineSpaceSpecial_Finish(
     if (r == TPM2_RC_RETRY || r == TPM2_RC_TESTING || r == TPM2_RC_YIELDED) {
         LOG_DEBUG("TPM returned RETRY, TESTING or YIELDED, which triggers a "
             "resubmission: %" PRIx32, r);
-        if (esysContext->submissionCount >= _ESYS_MAX_SUBMISSIONS) {
+        if (esysContext->submissionCount++ >= _ESYS_MAX_SUBMISSIONS) {
             LOG_WARNING("Maximum number of (re)submissions has been reached.");
             esysContext->state = _ESYS_STATE_INIT;
             return r;
         }
         esysContext->state = _ESYS_STATE_RESUBMISSION;
-        r = Esys_NV_UndefineSpaceSpecial_Async(esysContext,
-                                               esysContext->in.NV_UndefineSpaceSpecial.nvIndex,
-                                               esysContext->in.NV_UndefineSpaceSpecial.platform,
-                                               esysContext->session_type[0],
-                                               esysContext->session_type[1],
-                                               esysContext->session_type[2]);
+        r = Tss2_Sys_ExecuteAsync(esysContext->sys);
         if (r != TSS2_RC_SUCCESS) {
             LOG_WARNING("Error attempting to resubmit");
             /* We do not set esysContext->state here but inherit the most recent
@@ -317,7 +317,7 @@ Esys_NV_UndefineSpaceSpecial_Finish(
      * correct computation of HMAC. The size of the session value is
      * decreased because the auth value is not used for the response HMAC.
      */
-    nvIndex = esysContext->in.NV_UndefineSpaceSpecial.nvIndex;
+    nvIndex = esysContext->in.NV.nvIndex;
     r = esys_GetResourceObject(esysContext, nvIndex, &nvIndexNode);
     return_if_error(r, "get resource");
 
@@ -327,8 +327,7 @@ Esys_NV_UndefineSpaceSpecial_Finish(
     session->rsrc.misc.rsrc_session.sizeHmacValue -= nvIndexNode->auth.size;
 
     /* The ESYS_TR object (nvIndex) has to be invalidated */
-    r = Esys_TR_Close(esysContext,
-                      &esysContext->in.NV_UndefineSpaceSpecial.nvIndex);
+    r = Esys_TR_Close(esysContext, &esysContext->in.NV.nvIndex);
     return_if_error(r, "TR_Close");
 
     /*

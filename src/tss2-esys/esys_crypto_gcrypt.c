@@ -1,10 +1,12 @@
-/* SPDX-License-Identifier: BSD-2 */
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*******************************************************************************
  * Copyright 2017-2018, Fraunhofer SIT sponsored by Infineon Technologies AG
  * All rights reserved.
  ******************************************************************************/
 
-#define _GNU_SOURCE
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include <gcrypt.h>
 #include <stdio.h>
@@ -14,7 +16,7 @@
 #include "esys_crypto.h"
 #include "esys_iutil.h"
 #include "esys_mu.h"
-#define LOGMODULE esys
+#define LOGMODULE esys_crypto
 #include "util/log.h"
 #include "util/aux_util.h"
 
@@ -893,7 +895,7 @@ iesys_cryptogcry_get_ecdh_point(TPM2B_PUBLIC *key,
  *         parameters, TSS2_ESYS_RC_GENERAL_FAILURE for errors of the crypto
  *         library.
  */
-TSS2_RC
+static TSS2_RC
 iesys_cryptogcry_sym_aes_init(gcry_cipher_hd_t * cipher_hd,
                               uint8_t * key,
                               TPM2_ALG_ID tpm_sym_alg,

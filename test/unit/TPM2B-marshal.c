@@ -1,9 +1,13 @@
-/* SPDX-License-Identifier: BSD-2 */
+/* SPDX-License-Identifier: BSD-2-Clause */
 /***********************************************************************
  * Copyright (c) 2017-2018, Intel Corporation
  *
  * All rights reserved.
  ***********************************************************************/
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -18,7 +22,7 @@
 static void
 tpm2b_marshal_success(void **state) {
     TPM2B_DIGEST dgst = {4, {0}};
-    TPM2B_ECC_POINT point = {sizeof(TPMS_ECC_POINT), {0}};
+    TPM2B_ECC_POINT point = {0};
     uint8_t buffer[sizeof(dgst) + sizeof(point)] = {0};
     size_t  buffer_size = sizeof(buffer);
     uint16_t *size_ptr = (uint16_t *) buffer;
@@ -64,7 +68,7 @@ tpm2b_marshal_success(void **state) {
 static void
 tpm2b_marshal_success_offset(void **state) {
     TPM2B_DIGEST dgst = {4, {0}};
-    TPM2B_ECC_POINT point = {sizeof(TPMS_ECC_POINT), {0}};
+    TPM2B_ECC_POINT point = {0};
     size_t offset = 10;
     uint8_t buffer[sizeof(dgst) + sizeof(point) + 10] = {0};
     size_t  buffer_size = sizeof(buffer);
@@ -117,7 +121,7 @@ static void
 tpm2b_marshal_buffer_null_with_offset(void **state)
 {
     TPM2B_DIGEST dgst = {4, {0}};
-    TPM2B_ECC_POINT point = {sizeof(TPMS_ECC_POINT), {0}};
+    TPM2B_ECC_POINT point = {0};
     size_t offset = 10;
     size_t  buffer_size = sizeof(dgst) + sizeof(point) + 10;
     uint32_t value = 0xdeadbeef;
@@ -169,7 +173,7 @@ static void
 tpm2b_marshal_buffer_null_offset_null(void **state)
 {
     TPM2B_DIGEST dgst = {4, {0}};
-    TPM2B_ECC_POINT point = {sizeof(TPMS_ECC_POINT), {0}};
+    TPM2B_ECC_POINT point = {0};
     size_t buffer_size = 1024;
     TSS2_RC rc;
 
@@ -186,7 +190,7 @@ tpm2b_marshal_buffer_null_offset_null(void **state)
 static void
 tpm2b_marshal_buffer_size_lt_data_nad_lt_offset(void **state) {
     TPM2B_DIGEST dgst = {4, {0}};
-    TPM2B_ECC_POINT point = {sizeof(TPMS_ECC_POINT), {0}};
+    TPM2B_ECC_POINT point = {0};
     size_t offset = 10;
     uint8_t buffer[sizeof(dgst) + sizeof(point)] = {0};
     size_t  buffer_size = sizeof(buffer);
@@ -295,7 +299,7 @@ tpm2b_unmarshal_buffer_null (void **state)
     TPM2B_DIGEST dgst = {0};
     TPM2B_ECC_POINT point = {0};
     TSS2_RC rc;
-    size_t offset;
+    size_t offset = 0;
 
     rc = Tss2_MU_TPM2B_DIGEST_Unmarshal (NULL, 1, NULL, NULL);
     assert_int_equal (rc, TSS2_MU_RC_BAD_REFERENCE);
@@ -362,7 +366,7 @@ static void
 tpm2b_unmarshal_buffer_size_lt_data_nad_lt_offset(void **state)
 {
     TPM2B_DIGEST dgst = {4, {0x00, 0x01, 0x02, 0x03}};
-    TPM2B_ECC_POINT point = {sizeof(TPMS_ECC_POINT), {0}};
+    TPM2B_ECC_POINT point = {0};
     uint8_t buffer[sizeof(dgst) + sizeof(point)] = { 0 };
     size_t offset = sizeof(dgst) - 5;
     TSS2_RC rc;
@@ -374,6 +378,51 @@ tpm2b_unmarshal_buffer_size_lt_data_nad_lt_offset(void **state)
     rc = Tss2_MU_TPM2B_ECC_POINT_Unmarshal (buffer, 1, &offset, &point);
     assert_int_equal (rc, TSS2_MU_RC_INSUFFICIENT_BUFFER);
     assert_int_equal (offset, sizeof(dgst) - 5);
+}
+
+/*
+ * Success case
+ */
+static void
+tpm2b_public_rsa_marshal_success(void **state) {
+    TPM2B_PUBLIC pub2b = {0};
+    TPMT_PUBLIC *pub = &pub2b.publicArea;
+    uint8_t buffer[sizeof(pub2b)] = { 0 };
+    size_t  buffer_size = sizeof(buffer);
+    TPM2B_PUBLIC *ptr1;
+    TSS2_RC rc;
+
+    pub->type = TPM2_ALG_RSA;
+    pub->parameters.rsaDetail.symmetric.algorithm = TPM2_ALG_AES;
+    pub->parameters.rsaDetail.symmetric.keyBits.aes = 128;
+    pub->parameters.rsaDetail.symmetric.mode.aes = TPM2_ALG_CBC;
+    rc = Tss2_MU_TPM2B_PUBLIC_Marshal(&pub2b, buffer, buffer_size, NULL);
+    assert_int_equal (rc, TSS2_RC_SUCCESS);
+    ptr1 = (TPM2B_PUBLIC *)buffer;
+    assert_int_equal (ptr1->size, HOST_TO_BE_16(0x1a));
+}
+
+/*
+ * Success case
+ */
+static void
+tpm2b_public_rsa_unique_size_marshal_success(void **state) {
+    TPM2B_PUBLIC pub2b = {0};
+    TPMT_PUBLIC *pub = &pub2b.publicArea;
+    uint8_t buffer[sizeof(pub2b)] = { 0 };
+    size_t  buffer_size = sizeof(buffer);
+    TPM2B_PUBLIC *ptr1;
+    TSS2_RC rc;
+
+    pub->type = TPM2_ALG_RSA;
+    pub->parameters.rsaDetail.symmetric.algorithm = TPM2_ALG_AES;
+    pub->parameters.rsaDetail.symmetric.keyBits.aes = 128;
+    pub->parameters.rsaDetail.symmetric.mode.aes = TPM2_ALG_CBC;
+    pub->unique.rsa.size = 0x100;
+    rc = Tss2_MU_TPM2B_PUBLIC_Marshal(&pub2b, buffer, buffer_size, NULL);
+    assert_int_equal (rc, TSS2_RC_SUCCESS);
+    ptr1 = (TPM2B_PUBLIC *)buffer;
+    assert_int_equal (ptr1->size, HOST_TO_BE_16(0x11a));
 }
 
 int main(void) {
@@ -389,6 +438,8 @@ int main(void) {
         cmocka_unit_test(tpm2b_unmarshal_dest_null),
         cmocka_unit_test(tpm2b_unmarshal_dest_null_offset_valid),
         cmocka_unit_test(tpm2b_unmarshal_buffer_size_lt_data_nad_lt_offset),
+        cmocka_unit_test(tpm2b_public_rsa_marshal_success),
+        cmocka_unit_test(tpm2b_public_rsa_unique_size_marshal_success),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

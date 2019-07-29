@@ -1,18 +1,19 @@
-/* SPDX-License-Identifier: BSD-2 */
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*******************************************************************************
  * Copyright 2017, Fraunhofer SIT sponsored by Infineon Technologies AG
  * All rights reserved.
  *******************************************************************************/
 
-#ifndef NO_DL
-#include <dlfcn.h>
-#endif /* NO_DL */
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 #include <stdlib.h>
 
 #include "tss2_esys.h"
+#include "tss2_tctildr.h"
 
 #include "esys_iutil.h"
-#include "esys_tcti_default.h"
+#include "tss2-tcti/tctildr-interface.h"
 #define LOGMODULE esys
 #include "util/log.h"
 #include "util/aux_util.h"
@@ -64,7 +65,7 @@ Esys_Initialize(ESYS_CONTEXT ** esys_context, TSS2_TCTI_CONTEXT * tcti,
 
     /* If no tcti was provided, initialize the default one. */
     if (tcti == NULL) {
-        r = get_tcti_default(&tcti, &(*esys_context)->dlhandle);
+        r = Tss2_TctiLdr_Initialize (NULL, &tcti);
         goto_if_error(r, "Initialize default tcti.", cleanup_return);
     }
 
@@ -85,13 +86,8 @@ Esys_Initialize(ESYS_CONTEXT ** esys_context, TSS2_TCTI_CONTEXT * tcti,
 cleanup_return:
     /* If we created the tcti ourselves, we must clean it up */
     if ((*esys_context)->tcti_app_param == NULL && tcti != NULL) {
-        Tss2_Tcti_Finalize(tcti);
-        free(tcti);
+        Tss2_TctiLdr_Finalize(&tcti);
     }
-#ifndef NO_DL
-    if ((*esys_context)->dlhandle)
-        dlclose((*esys_context)->dlhandle);
-#endif /* NO_DL */
 
     /* No need to finalize (*esys_context)->sys only free since
        it is the last goto in this function. */
@@ -140,14 +136,8 @@ Esys_Finalize(ESYS_CONTEXT ** esys_context)
     /* If no tcti context was provided during initialization, then we need to
        finalize the tcti context here. */
     if (tctcontext != NULL) {
-        Tss2_Tcti_Finalize(tctcontext);
-        free(tctcontext);
+        Tss2_TctiLdr_Finalize(&tctcontext);
     }
-
-#ifndef NO_DL
-    if ((*esys_context)->dlhandle)
-        dlclose((*esys_context)->dlhandle);
-#endif /* NO_DL */
 
     /* Free esys_context */
     free(*esys_context);

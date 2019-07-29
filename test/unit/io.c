@@ -1,9 +1,13 @@
-/* SPDX-License-Identifier: BSD-2 */
+/* SPDX-License-Identifier: BSD-2-Clause */
 /***********************************************************************
  * Copyright (c) 2017-2018, Intel Corporation
  *
  * All rights reserved.
  ***********************************************************************/
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -46,7 +50,10 @@ __wrap_read (int fd, void *buffer, size_t count)
 {
     LOG_DEBUG ("%s: reading %zu bytes from fd: %d to buffer at 0x%" PRIxPTR,
                __func__, count, fd, (uintptr_t)buffer);
-    return mock_type (ssize_t);
+    int r = mock_type (ssize_t);
+    if (r > 0)
+        memset(buffer, 0x66, r);
+    return r;
 }
 
 ssize_t

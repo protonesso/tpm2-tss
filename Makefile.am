@@ -1,11 +1,13 @@
-# SPDX-License-Identifier: BSD-2
+# SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2015 - 2018 Intel Corporation
 # Copyright (c) 2018 Fraunhofer SIT sponsored by Infineon Technologies AG
 # All rights reserved.
 
+-include $(top_srcdir)/git.mk
+
 ### Initialize global variables used throughout the file ###
 INCLUDE_DIRS    = -I$(srcdir)/src -I$(srcdir)/include/tss2
-ACLOCAL_AMFLAGS = -I m4
+ACLOCAL_AMFLAGS = -I m4 --install
 AM_CFLAGS       = $(INCLUDE_DIRS) $(EXTRA_CFLAGS) $(CODE_COVERAGE_CFLAGS)
 AM_LDFLAGS      = $(EXTRA_LDFLAGS) $(CODE_COVERAGE_LIBS)
 
@@ -13,13 +15,52 @@ AM_LDFLAGS      = $(EXTRA_LDFLAGS) $(CODE_COVERAGE_LIBS)
 lib_LTLIBRARIES =
 noinst_LTLIBRARIES =
 EXTRA_DIST =
+DISTCLEANFILES =
 CLEANFILES =
 MOSTLYCLEANFILES =
 noinst_PROGRAMS =
+MAINTAINERCLEANFILES = \
+    $(DIST_ARCHIVES) \
+    AUTHORS
+
+GITIGNOREFILES = \
+    $(GITIGNORE_MAINTAINERCLEANFILES_TOPLEVEL) \
+    $(GITIGNORE_MAINTAINERCLEANFILES_MAKEFILE_IN) \
+    $(GITIGNORE_MAINTAINERCLEANFILES_M4_LIBTOOL) \
+    src_vars.mk \
+    Makefile-fuzz-generated.am \
+    aminclude_static.am \
+    m4/ax_ac_append_to_file.m4 \
+    m4/ax_ac_print_to_file.m4 \
+    m4/ax_add_am_macro_static.m4 \
+    m4/ax_add_fortify_source.m4 \
+    m4/ax_am_macros_static.m4 \
+    m4/ax_check_compile_flag.m4 \
+    m4/ax_check_enable_debug.m4 \
+    m4/ax_check_gnu_make.m4 \
+    m4/ax_check_link_flag.m4 \
+    m4/ax_check_preproc_flag.m4 \
+    m4/ax_code_coverage.m4 \
+    m4/ax_file_escapes.m4 \
+    m4/ax_is_release.m4 \
+    m4/ax_normalize_path.m4 \
+    m4/ax_prog_doxygen.m4 \
+    m4/ax_valgrind_check.m4 \
+    m4/pkg.m4
 
 ### Add ax_* rules ###
 # ax_code_coverage
+if AUTOCONF_CODE_COVERAGE_2019_01_06
+include $(top_srcdir)/aminclude_static.am
+clean-local: code-coverage-clean
+distclean-local: code-coverage-dist-clean
+else
 @CODE_COVERAGE_RULES@
+endif
+CODE_COVERAGE_DIRECTORY = $(top_builddir)/src
+
+# ax_valgrind_check
+@VALGRIND_CHECK_RULES@
 
 # ax_doxygen
 @DX_RULES@
@@ -148,6 +189,9 @@ include src_vars.mk
 # Add test definitions
 include Makefile-test.am
 
+# Add fuzz definitions
+include Makefile-fuzz.am
+
 ### Distribution files ###
 # Add udev rule
 udevrules_DATA   = dist/tpm-udev.rules
@@ -158,26 +202,29 @@ EXTRA_DIST += \
     CONTRIBUTING.md \
     INSTALL.md \
     LICENSE \
+    MAINTAINERS \
     README.md \
     RELEASE.md
+
+# Windows code / core build files
+EXTRA_DIST += \
+    include/tss2/tss2_tcti_tbs.h \
+    lib/tss2-tcti-tbs.def \
+    src/tss2-tcti/tcti-tbs.c \
+    src/tss2-tcti/tcti-tbs.h \
+    src/tss2-tcti/tss2-tcti-tbs.vcxproj \
+    src/tss2-tcti/tss2-tcti-tbs.vcxproj.filters \
+    tpm2-tss.sln
 
 # Generate the AUTHORS file from git log
 AUTHORS :
 	$(AM_V_GEN)git log --format='%aN <%aE>' | grep -v 'users.noreply.github.com' | sort | \
 	    uniq -c | sort -nr | sed 's/^\s*//' | cut -d" " -f2- > $@
 EXTRA_DIST += AUTHORS
-CLEANFILES += AUTHORS
 
 # pkg-config setup. pc-file declarations happen in the corresponding modules
-pkgconfigdir          = $(libdir)/pkgconfig
-nodist_pkgconfig_DATA =
-CLEANFILES += $(nodist_pkgconfig_DATA)
-
-%.pc : %.pc.in
-	$(AM_V_GEN)$(call make_parent_dir,$@) && \
-	sed -e "s,[@]VERSION[@],$(PACKAGE_VERSION),g; \
-	        s,[@]libdir[@],$(libdir),g; \
-	        s,[@]includedir[@],$(includedir),g;" $^ > $@
+pkgconfig_DATA =
+DISTCLEANFILES += $(pkgconfig_DATA)
 
 # Base TSS2 headers
 tss2dir = $(includedir)/tss2
@@ -189,15 +236,14 @@ tss2_HEADERS = \
 ### Internal utility library
 libutil = libutil.la
 noinst_LTLIBRARIES += $(libutil)
-libutil_la_CFLAGS = $(AM_CFLAGS)
 libutil_la_SOURCES = $(UTIL_SRC)
 
 ### TCG TSS Marshaling/Unmarshaling spec library ###
 libtss2_mu = src/tss2-mu/libtss2-mu.la
 tss2_HEADERS += $(srcdir)/include/tss2/tss2_mu.h
 lib_LTLIBRARIES += $(libtss2_mu)
-nodist_pkgconfig_DATA += lib/tss2-mu.pc
-EXTRA_DIST += lib/tss2-mu.map lib/tss2-mu.pc.in
+pkgconfig_DATA += lib/tss2-mu.pc
+EXTRA_DIST += lib/tss2-mu.map lib/tss2-mu.def src/tss2-mu/tss2-mu.vcxproj
 
 if HAVE_LD_VERSION_SCRIPT
 src_tss2_mu_libtss2_mu_la_LDFLAGS = -Wl,--version-script=$(srcdir)/lib/tss2-mu.map
@@ -206,22 +252,45 @@ src_tss2_mu_libtss2_mu_la_LIBADD = $(libutil)
 src_tss2_mu_libtss2_mu_la_SOURCES = $(TSS2_MU_SRC)
 
 ### TCG TSS TCTI spec libraries ###
+# tcti loader library
+libtss2_tctildr = src/tss2-tcti/libtss2-tctildr.la
+tss2_HEADERS += $(srcdir)/include/tss2/tss2_tctildr.h
+lib_LTLIBRARIES += $(libtss2_tctildr)
+pkgconfig_DATA += lib/tss2-tctildr.pc
+EXTRA_DIST += lib/tss2-tctildr.map
+
+src_tss2_tcti_libtss2_tctildr_la_CFLAGS = $(AM_CFLAGS)
+if HAVE_LD_VERSION_SCRIPT
+src_tss2_tcti_libtss2_tctildr_la_LDFLAGS = \
+    -Wl,--version-script=$(srcdir)/lib/tss2-tctildr.map
+endif # HAVE_LD_VERSION_SCRIPT
+src_tss2_tcti_libtss2_tctildr_la_LIBADD = $(libutil)
+src_tss2_tcti_libtss2_tctildr_la_SOURCES = \
+    src/tss2-tcti/tctildr.c src/tss2-tcti/tctildr.h \
+    src/tss2-tcti/tctildr-interface.h
+if NO_DL
+src_tss2_tcti_libtss2_tctildr_la_LIBADD += $(libtss2_tcti_device) $(libtss2_tcti_mssim)
+src_tss2_tcti_libtss2_tctildr_la_SOURCES += src/tss2-tcti/tctildr-nodl.c src/tss2-tcti/tctildr-nodl.h
+else
+src_tss2_tcti_libtss2_tctildr_la_LIBADD += $(LIBADD_DL)
+src_tss2_tcti_libtss2_tctildr_la_SOURCES += src/tss2-tcti/tctildr-dl.c src/tss2-tcti/tctildr-dl.h
+endif
+
 # tcti device library
 if ENABLE_TCTI_DEVICE
 libtss2_tcti_device = src/tss2-tcti/libtss2-tcti-device.la
 tss2_HEADERS += $(srcdir)/include/tss2/tss2_tcti_device.h
 lib_LTLIBRARIES += $(libtss2_tcti_device)
-nodist_pkgconfig_DATA += lib/tss2-tcti-device.pc
-EXTRA_DIST += lib/tss2-tcti-device.map lib/tss2-tcti-device.pc.in
+pkgconfig_DATA += lib/tss2-tcti-device.pc
+EXTRA_DIST += lib/tss2-tcti-device.map
 
-src_tss2_tcti_libtss2_tcti_device_la_CFLAGS   = $(AM_CFLAGS)
 if HAVE_LD_VERSION_SCRIPT
 src_tss2_tcti_libtss2_tcti_device_la_LDFLAGS  = -Wl,--version-script=$(srcdir)/lib/tss2-tcti-device.map
 endif # HAVE_LD_VERSION_SCRIPT
 src_tss2_tcti_libtss2_tcti_device_la_LIBADD   = $(libtss2_mu) $(libutil)
 src_tss2_tcti_libtss2_tcti_device_la_SOURCES  = \
-    src/tss2-tcti/tcti-common.c src/tss2-tcti/tcti-common.h \
-    src/tss2-tcti/tcti-device.c src/tss2-tcti/tcti-device.h
+    src/tss2-tcti/tcti-common.c \
+    src/tss2-tcti/tcti-device.c
 endif # ENABLE_TCTI_DEVICE
 
 # tcti library for Microsoft TPM2 simulator
@@ -229,68 +298,112 @@ if ENABLE_TCTI_MSSIM
 libtss2_tcti_mssim = src/tss2-tcti/libtss2-tcti-mssim.la
 tss2_HEADERS += $(srcdir)/include/tss2/tss2_tcti_mssim.h
 lib_LTLIBRARIES += $(libtss2_tcti_mssim)
-nodist_pkgconfig_DATA += lib/tss2-tcti-mssim.pc
-EXTRA_DIST += lib/tss2-tcti-mssim.map lib/tss2-tcti-mssim.pc.in
+pkgconfig_DATA += lib/tss2-tcti-mssim.pc
+EXTRA_DIST += lib/tss2-tcti-mssim.map \
+              lib/tss2-tcti-mssim.def \
+              src/tss2-tcti/tss2-tcti-mssim.vcxproj \
+              src/tss2-tcti/tss2-tcti-mssim.vcxproj.filters
 
-AM_CFLAGS += -DTCTI_MSSIM
-src_tss2_tcti_libtss2_tcti_mssim_la_CFLAGS   = $(AM_CFLAGS) $(URIPARSER_CFLAGS)
 if HAVE_LD_VERSION_SCRIPT
 src_tss2_tcti_libtss2_tcti_mssim_la_LDFLAGS  = -Wl,--version-script=$(srcdir)/lib/tss2-tcti-mssim.map
 endif # HAVE_LD_VERSION_SCRIPT
-src_tss2_tcti_libtss2_tcti_mssim_la_LIBADD   = $(libtss2_mu) $(URIPARSER_LIBS) $(libutil)
+src_tss2_tcti_libtss2_tcti_mssim_la_LIBADD   = $(libtss2_mu) $(libutil)
 src_tss2_tcti_libtss2_tcti_mssim_la_SOURCES  = \
-    src/tss2-tcti/tcti-common.c src/tss2-tcti/tcti-common.h \
-    src/tss2-tcti/tcti-mssim.c src/tss2-tcti/tcti-mssim.h
+    src/tss2-tcti/tcti-common.c \
+    src/tss2-tcti/tcti-mssim.c
 endif # ENABLE_TCTI_MSSIM
 
 ### TCG TSS SAPI spec library ###
 libtss2_sys = src/tss2-sys/libtss2-sys.la
 tss2_HEADERS += $(srcdir)/include/tss2/tss2_sys.h
 lib_LTLIBRARIES += $(libtss2_sys)
-nodist_pkgconfig_DATA += lib/tss2-sys.pc
-EXTRA_DIST += lib/tss2-sys.pc.in
+pkgconfig_DATA += lib/tss2-sys.pc
 
 src_tss2_sys_libtss2_sys_la_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/src/tss2-sys
 src_tss2_sys_libtss2_sys_la_LDFLAGS = $(AM_LDFLAGS) $(LIBSOCKET_LDFLAGS)
+
+if HAVE_LD_VERSION_SCRIPT
+src_tss2_sys_libtss2_sys_la_LDFLAGS += -Wl,--version-script=$(srcdir)/lib/tss2-sys.map
+endif # HAVE_LD_VERSION_SCRIPT
 src_tss2_sys_libtss2_sys_la_LIBADD = $(libtss2_mu) $(libutil)
 src_tss2_sys_libtss2_sys_la_SOURCES = $(TSS2_SYS_SRC)
+EXTRA_DIST += lib/tss2-sys.map lib/tss2-sys.def src/tss2-sys/tss2-sys.vcxproj
 
 ### TCG TSS ESAPI spec library ###
 if ESAPI
 libtss2_esys = src/tss2-esys/libtss2-esys.la
 tss2_HEADERS += $(srcdir)/include/tss2/tss2_esys.h
 lib_LTLIBRARIES += $(libtss2_esys)
-nodist_pkgconfig_DATA += lib/tss2-esys.pc
-EXTRA_DIST += lib/tss2-esys.pc.in
-
-
-src_tss2_esys_libtss2_esys_la_LIBADD  = $(libtss2_sys) $(libtss2_mu) \
-    $(libtss2_tcti_device) $(libtss2_tcti_mssim) $(libutil)
+pkgconfig_DATA += lib/tss2-esys.pc
 
 if ESYS_OSSL
-TSS2_ESYS_SRC += src/tss2-esys/esys_crypto_ossl.h src/tss2-esys/esys_crypto_ossl.c
-src_tss2_esys_libtss2_esys_la_CFLAGS  = $(AM_CFLAGS) -I$(srcdir)/src/tss2-esys -DOSSL
-src_tss2_esys_libtss2_esys_la_LDFLAGS = $(AM_LDFLAGS) $(LIBDL_LDFLAGS) $(LIBSOCKET_LDFLAGS) -lssl -lcrypto
+TSS2_ESYS_SRC_CRYPTO = src/tss2-esys/esys_crypto_ossl.h src/tss2-esys/esys_crypto_ossl.c
 else
 if ESYS_GCRYPT
-TSS2_ESYS_SRC += src/tss2-esys/esys_crypto_gcrypt.h src/tss2-esys/esys_crypto_gcrypt.c
-src_tss2_esys_libtss2_esys_la_CFLAGS  = $(AM_CFLAGS) -I$(srcdir)/src/tss2-esys
-src_tss2_esys_libtss2_esys_la_LDFLAGS = $(AM_LDFLAGS) $(LIBDL_LDFLAGS) $(LIBSOCKET_LDFLAGS) -lgcrypt
+TSS2_ESYS_SRC_CRYPTO = src/tss2-esys/esys_crypto_gcrypt.h src/tss2-esys/esys_crypto_gcrypt.c
 endif
 endif
-src_tss2_esys_libtss2_esys_la_SOURCES = $(TSS2_ESYS_SRC)
 
+src_tss2_esys_libtss2_esys_la_CFLAGS  = $(AM_CFLAGS) -I$(srcdir)/src/tss2-esys \
+    $(TSS2_ESYS_CFLAGS_CRYPTO)
+src_tss2_esys_libtss2_esys_la_LIBADD  = $(libtss2_sys) $(libtss2_mu) $(libutil)
+
+src_tss2_esys_libtss2_esys_la_LDFLAGS = $(AM_LDFLAGS) $(LIBSOCKET_LDFLAGS) \
+                                        $(TSS2_ESYS_LDFLAGS_CRYPTO)
+if HAVE_LD_VERSION_SCRIPT
+src_tss2_esys_libtss2_esys_la_LDFLAGS += -Wl,--version-script=$(srcdir)/lib/tss2-esys.map
+endif # HAVE_LD_VERSION_SCRIPT
+src_tss2_esys_libtss2_esys_la_SOURCES = $(TSS2_ESYS_SRC) $(TSS2_ESYS_SRC_CRYPTO) \
+    src/tss2-tcti/tctildr.c src/tss2-tcti/tctildr.h \
+    src/tss2-tcti/tctildr-interface.h
+if NO_DL
+src_tss2_esys_libtss2_esys_la_LIBADD += $(libtss2_tcti_device) $(libtss2_tcti_mssim)
+src_tss2_esys_libtss2_esys_la_SOURCES += src/tss2-tcti/tctildr-nodl.c src/tss2-tcti/tctildr-nodl.h
+else
+src_tss2_esys_libtss2_esys_la_LIBADD += $(LIBADD_DL)
+src_tss2_esys_libtss2_esys_la_SOURCES += src/tss2-tcti/tctildr-dl.c src/tss2-tcti/tctildr-dl.h
+endif
+EXTRA_DIST += lib/tss2-esys.map \
+              lib/tss2-esys.def \
+              src/tss2-esys/tss2-esys.vcxproj \
+              src/tss2-esys/tss2-esys.vcxproj.filters
 endif #ESAPI
 
+### TCG TSS error decoding spec library ###
+libtss2_rc = src/tss2-rc/libtss2-rc.la
+tss2_HEADERS += $(srcdir)/include/tss2/tss2_rc.h
+lib_LTLIBRARIES += $(libtss2_rc)
+pkgconfig_DATA += lib/tss2-rc.pc
+EXTRA_DIST += lib/tss2-rc.map lib/tss2-rc.def
+
+if HAVE_LD_VERSION_SCRIPT
+src_tss2_rc_libtss2_rc_la_LDFLAGS = -Wl,--version-script=$(srcdir)/lib/tss2-rc.map
+endif # HAVE_LD_VERSION_SCRIPT
+src_tss2_rc_libtss2_rc_la_SOURCES = $(TSS2_RC_SRC)
+
 ### Man Pages
-man3_MANS = man/man3/Tss2_Tcti_Device_Init.3 man/man3/Tss2_Tcti_Mssim_Init.3 $(DOXYMAN3)
-man7_MANS = man/man7/tss2-tcti-device.7 man/man7/tss2-tcti-mssim.7
+man3_MANS = \
+    man/man3/Tss2_Tcti_Device_Init.3 \
+    man/man3/Tss2_Tcti_Mssim_Init.3 \
+    man/man3/Tss2_TctiLdr_Finalize.3 \
+    man/man3/Tss2_TctiLdr_FreeInfo.3 \
+    man/man3/Tss2_TctiLdr_GetInfo.3 \
+    man/man3/Tss2_TctiLdr_Initialize.3 \
+    $(DOXYMAN3)
+
+man7_MANS = \
+    man/man7/tss2-tcti-device.7 \
+    man/man7/tss2-tcti-mssim.7 \
+    man/man7/tss2-tctildr.7
 
 man/man3/%.3 : man/%.3.in $(srcdir)/man/man-postlude.troff
 	$(AM_V_GEN)$(call make_man,$@,$<,$(srcdir)/man/man-postlude.troff)
 
 man/man7/%.7 : man/%.7.in $(srcdir)/man/man-postlude.troff
 	$(AM_V_GEN)$(call make_man,$@,$<,$(srcdir)/man/man-postlude.troff)
+
+install-man: install-man3 install-man7
+	$(LN_S) Tss2_TctiLdr_Initialize.3 $(DESTDIR)$(man3dir)/Tss2_TctiLdr_Initialize_Ex.3
 
 EXTRA_DIST += dist/tpm-udev.rules
 
@@ -304,11 +417,20 @@ endif
 
 EXTRA_DIST += \
     doc/doxygen.dox \
+    doc/coding_standard_c.md \
+    doc/logging.md \
+    doc/fuzzing.md \
+    doc/TSS_block_diagram.png \
     man/man-postlude.troff \
     man/Tss2_Tcti_Device_Init.3.in \
     man/Tss2_Tcti_Mssim_Init.3.in \
+    man/Tss2_TctiLdr_Finalize.3.in \
+    man/Tss2_TctiLdr_FreeInfo.3.in \
+    man/Tss2_TctiLdr_GetInfo.3.in \
+    man/Tss2_TctiLdr_Initialize.3.in \
     man/tss2-tcti-device.7.in \
-    man/tss2-tcti-mssim.7.in
+    man/tss2-tcti-mssim.7.in \
+    man/tss2-tctildr.7.in
 
 CLEANFILES += \
     $(man3_MANS) \
