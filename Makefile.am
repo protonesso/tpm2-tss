@@ -403,7 +403,7 @@ man/man7/%.7 : man/%.7.in $(srcdir)/man/man-postlude.troff
 	$(AM_V_GEN)$(call make_man,$@,$<,$(srcdir)/man/man-postlude.troff)
 
 install-man: install-man3 install-man7
-	$(LN_S) Tss2_TctiLdr_Initialize.3 $(DESTDIR)$(man3dir)/Tss2_TctiLdr_Initialize_Ex.3
+	$(LN_S) -f Tss2_TctiLdr_Initialize.3 $(DESTDIR)$(man3dir)/Tss2_TctiLdr_Initialize_Ex.3
 
 EXTRA_DIST += dist/tpm-udev.rules
 
@@ -414,6 +414,18 @@ install-data-hook:
 uninstall-local:
 	-rm $(DESTDIR)$(udevrulesdir)/$(udevrulesprefix)tpm-udev.rules
 endif
+
+install-exec-hook:
+	cd $(DESTDIR)$(libdir) && \
+		$(LN_S) -f libtss2-tcti-device.so libtss2-tcti-default.so
+
+uninstall-hook:
+	cd $(DESTDIR)$(libdir) && \
+		[ -L libtss2-tcti-default.so ] && \
+			rm -f libtss2-tcti-default.so || true
+	cd $(DESTDIR)$(man3dir) && \
+		[ -L Tss2_TctiLdr_Initialize_Ex.3 ] && \
+			rm -f Tss2_TctiLdr_Initialize_Ex.3 || true
 
 EXTRA_DIST += \
     doc/doxygen.dox \
