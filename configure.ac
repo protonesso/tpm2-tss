@@ -4,7 +4,7 @@
 # All rights reserved.
 
 AC_INIT([tpm2-tss],
-        [2.3.0-rc1],
+        [2.4.0-rc0],
         [https://github.com/tpm2-software/tpm2-tss/issues],
         [],
         [https://github.com/tpm2-software/tpm2-tss])
@@ -15,7 +15,7 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])]) #Backward compatible setti
 
 AC_CONFIG_HEADERS([config.h])
 
-AC_CONFIG_FILES([Makefile Doxyfile lib/tss2-sys.pc lib/tss2-esys.pc lib/tss2-mu.pc lib/tss2-tcti-device.pc lib/tss2-tcti-mssim.pc lib/tss2-rc.pc lib/tss2-tctildr.pc])
+AC_CONFIG_FILES([Makefile Doxyfile lib/tss2-sys.pc lib/tss2-esys.pc lib/tss2-mu.pc lib/tss2-tcti-device.pc lib/tss2-tcti-mssim.pc lib/tss2-rc.pc lib/tss2-tctildr.pc lib/tss2-fapi.pc])
 
 # propagate configure arguments to distcheck
 AC_SUBST([DISTCHECK_CONFIGURE_FLAGS],[$ac_configure_args])
@@ -25,8 +25,8 @@ AC_CANONICAL_HOST
 AX_IS_RELEASE(dash-version)
 AX_CHECK_ENABLE_DEBUG([info])
 
-AC_PROG_CXX
 AC_PROG_CC
+AC_PROG_CXX
 AC_PROG_LN_S
 AC_USE_SYSTEM_EXTENSIONS
 LT_INIT()
@@ -44,6 +44,35 @@ case "${host_os}" in
         ;;
 esac
 AC_SUBST([LIBSOCKET_LDFLAGS])
+
+# runstatedir is only defined in the yet unreleased Autoconf 2.70
+AC_ARG_WITH([runstatedir],
+            AS_HELP_STRING([--with-runstatedir=<dir>],
+                           [replacement for --runstatedir in Autoconf <2.70]),
+            [runstatedir="$withval"])
+AS_IF([test -z "$runstatedir"], [runstatedir="${localstatedir}/run"])
+AC_SUBST([runstatedir])
+
+AX_RECURSIVE_EVAL([$sysconfdir], [SYSCONFDIR])
+AC_DEFINE_UNQUOTED([SYSCONFDIR], ["$SYSCONFDIR"], [System config dir])
+
+AC_ARG_WITH([userstatedir],
+            [AS_HELP_STRING([--with-userstatedir=<dir>],
+                            [sets the relative path in the user's home (default is ".local/share")])],,
+            [with_userstatedir=.local/share])
+AC_SUBST(userstatedir, $with_userstatedir)
+
+AC_ARG_WITH([sysusersdir],
+            [AS_HELP_STRING([--with-sysusersdir=<dir>],
+                            [sets the sysusers.d directory (default is "${sysconfdir}/sysusers.d")])],,
+            [with_sysusersdir="${sysconfdir}/sysusers.d"])
+AC_SUBST(sysusersdir, $with_sysusersdir)
+
+AC_ARG_WITH([tmpfilesdir],
+            [AS_HELP_STRING([--with-tmpfilesdir=<dir>],
+                            [sets the tmpfiles.d directory (default is "${sysconfdir}/tmpfiles.d")])],,
+            [with_tmpfilesdir="${sysconfdir}/tmpfiles.d"])
+AC_SUBST(tmpfilesdir, $with_tmpfilesdir)
 
 AC_CHECK_FUNCS([strndup])
 AC_ARG_ENABLE([unit],
@@ -64,6 +93,24 @@ AC_ARG_ENABLE([esapi],
             [enable_esapi=yes])
 
 AM_CONDITIONAL(ESAPI, test "x$enable_esapi" = "xyes")
+
+AC_CHECK_FUNCS([reallocarray])
+AC_ARG_ENABLE([fapi],
+            [AS_HELP_STRING([--enable-fapi],
+                            [build the fapi layer (default is yes)])],
+            [enable_fapi=$enableval],
+            [enable_fapi=yes])
+
+AM_CONDITIONAL(FAPI, test "x$enable_fapi" = "xyes")
+
+AC_ARG_ENABLE([fapi-async-tests],
+    AS_HELP_STRING([--enable-fapi-async-tests],
+               [Force fapi to spin asynchronously. (NOT FOR PRODUCTION!)]),,
+    [enable_fapi_async_tests=no])
+AS_IF([test "x$enable_fapi_async_tests" = "xyes"],
+    AC_DEFINE([TEST_FAPI_ASYNC], [1], [FAPI forced async spinning]))
+AS_IF([test "x$enable_fapi_async_tests" = "xyes"],
+    AC_MSG_WARN("FAPI compiled with asynchronous spinning testing. NOT FOR PRODUCTION!"))
 
 AC_ARG_ENABLE([tcti-device-async],
     AS_HELP_STRING([--enable-tcti-device-async],
@@ -106,6 +153,18 @@ AS_IF([test "x$enable_esapi" = xyes],
        ], AC_MSG_ERROR([Bad value for --with-crypto $with_crypto]))])
 AC_SUBST([TSS2_ESYS_CFLAGS_CRYPTO])
 AC_SUBST([TSS2_ESYS_LDFLAGS_CRYPTO])
+
+AS_IF([test "x$enable_fapi" != xno -a "x$enable_esapi" = "xno"],
+    AC_MSG_ERROR([ESAPI has to be enabled to compile FAPI.]))
+
+AS_IF([test "x$enable_fapi" != xno -a "x$with_crypto" != "xossl"],
+    AC_MSG_ERROR([FAPI has to be compiled with OpenSSL]))
+
+AS_IF([test "x$enable_fapi" = xyes ],
+    PKG_CHECK_MODULES([JSON_C], [json-c]))
+
+AS_IF([test "x$enable_fapi" = xyes ],
+    PKG_CHECK_MODULES([CURL], [libcurl]))
 
 AC_ARG_WITH([tctidefaultmodule],
             [AS_HELP_STRING([--with-tctidefaultmodule],
@@ -200,6 +259,29 @@ AS_IF([test "x$enable_integration" = "xyes"],
               AC_MSG_ERROR([Integration tests can not be enabled without the TCTI_MSSIM module]))
        AC_SUBST([ENABLE_INTEGRATION], [$enable_integration])])
 AM_CONDITIONAL([ENABLE_INTEGRATION],[test "x$enable_integration" = "xyes"])
+#
+# sanitizer compiler flags
+#
+AC_ARG_WITH([sanitizer],
+            [AS_HELP_STRING([--with-sanitizer={none,address,undefined}],
+                            [build with the given sanitizer])],,
+            [with_sanitizer=none])
+AS_CASE(["x$with_sanitizer"],
+        ["xnone"],
+        [],
+        ["xaddress"],
+        [
+            SANITIZER_CFLAGS="-fsanitize=address -fno-omit-frame-pointer"
+            SANITIZER_LDFLAGS="-lasan"
+        ],
+        ["xundefined"],
+        [
+            SANITIZER_CFLAGS="-fsanitize=undefined"
+            SANITIZER_LDFLAGS="-lubsan"
+        ],
+        [AC_MSG_ERROR([Bad value for --with-sanitizer])])
+AC_SUBST([SANITIZER_CFLAGS])
+AC_SUBST([SANITIZER_LDFLAGS])
 #
 # fuzz testing
 #
@@ -364,6 +446,7 @@ AC_OUTPUT
 AC_MSG_RESULT([
     $PACKAGE_NAME $VERSION
     esapi:              $enable_esapi
+    fapi:               $enable_fapi
     tctidefaultmodule:  $with_tctidefaultmodule
     tctidefaultconfig:  $with_tctidefaultconfig
     unit:               $enable_unit
@@ -374,4 +457,10 @@ AC_MSG_RESULT([
     tcti-device-async:  $enable_tcti_device_async
     tcti-partial-read:  $enable_tcti_partial_reads
     crypto backend:     $with_crypto
+    sysconfdir:         $sysconfdir
+    localstatedir:      $localstatedir
+    runstatedir:        $runstatedir
+    sysusersdir:        $sysusersdir
+    tmpfilesdir:        $tmpfilesdir
+    userstatedir:       [\$HOME/]$with_userstatedir
 ])

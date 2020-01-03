@@ -117,7 +117,6 @@ tctildr_conf_parse (const char *name_conf,
     char *split;
     size_t combined_length;
 
-    LOG_DEBUG ("name_conf: \"%s\"", name_conf);
     if (name_conf == NULL) {
         LOG_ERROR ("'name_conf' param may NOT be NULL");
         return TSS2_TCTI_RC_BAD_REFERENCE;
@@ -127,6 +126,8 @@ tctildr_conf_parse (const char *name_conf,
         LOG_ERROR ("combined conf length must be between 0 and PATH_MAX");
         return TSS2_TCTI_RC_BAD_VALUE;
     }
+
+    LOG_DEBUG ("name_conf: \"%s\"", name_conf);
     if (combined_length == 0)
         return TSS2_RC_SUCCESS;
     split = strchr (name_conf, ':');
@@ -420,6 +421,7 @@ Tss2_TctiLdr_Initialize_Ex (const char *name,
     }
     ldr_ctx = calloc (1, sizeof (TSS2_TCTILDR_CONTEXT));
     if (ldr_ctx == NULL) {
+        rc = TSS2_TCTI_RC_MEMORY;
         goto err;
     }
     TSS2_TCTI_MAGIC (ldr_ctx) = TCTILDR_MAGIC;

@@ -49,7 +49,8 @@ $ sudo apt -y install \
   autoconf \
   doxygen
   doxygen \
-  libltdl-dev
+  libjson-c-dev \
+  libini-config-dev
 ```
 Note: In some Ubuntu versions, the lcov and autoconf-archive packages are incompatible with each other. It is recommended to download autoconf-archive directly from upstream and copy `ax_code_coverage.m4` and `ax_prog_doxygen.m4` to the `m4/` subdirectory of your tpm2-tss directory.
 
@@ -182,7 +183,7 @@ $ docker rm temp
 
 tpm2-tss is now in your working directory and contains all the built files.
 
-To rebuild using your local changes mount your tmp2-tss directory as a volume.
+To rebuild using your local changes mount your tpm2-tss directory as a volume.
 
 ```console
 $ docker run --rm -ti -v $PWD:/tmp/tpm2-tss tpm2-tss \

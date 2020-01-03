@@ -5,6 +5,9 @@
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/2332/badge)](https://bestpractices.coreinfrastructure.org/projects/2332)
 [![Total alerts](https://img.shields.io/lgtm/alerts/g/tpm2-software/tpm2-tss.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/tpm2-software/tpm2-tss/alerts/)
 [![Language grade: C/C++](https://img.shields.io/lgtm/grade/cpp/g/tpm2-software/tpm2-tss.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/tpm2-software/tpm2-tss/context:cpp)
+[![Documentation Status](https://readthedocs.org/projects/tpm2-tss/badge/?version=latest)](https://tpm2-tss.readthedocs.io/en/latest/?badge=latest)
+[![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tpm2-tss.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tpm2-tss)
+[![Gitter](https://badges.gitter.im/tpm2-software/community.svg)](https://gitter.im/tpm2-software/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
 # Overview
 This repository hosts source code implementing the Trusted Computing Group's (TCG) TPM2 Software Stack (TSS).
@@ -35,10 +38,15 @@ The latter implements the protocol exposed by the Microsoft software TPM2 simula
 Instructions to build and install tpm2-tss are available in the [INSTALL](INSTALL.md) file.
 
 # Getting in Touch:
-If you're looking to discuss the source code in this project or get some questions answered you should join the 01.org TPM2 mailing list: https://lists.01.org/mailman/listinfo/tpm2.
+If you're looking to discuss the source code in this project or get some questions answered you should join the 01.org TPM2 mailing list: https://lists.01.org/postorius/lists/tpm2.lists.01.org/.
 We also have an IRC channel set up on [FreeNode](https://freenode.net/) called \#tpm2.0-tss.
+You can also try Gitter [![Gitter](https://badges.gitter.im/tpm2-software/community.svg)](https://gitter.im/tpm2-software/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
 In case you want to contribute to the project, please also have a look at the [Contribution Guidelines](CONTRIBUTING.md).
+
+# Documentation
+
+The doxygen documentation can either be built by oneself (see the [INSTALL](INSTALL.md) file) or browsed directly on [tpm2-tss.readthedocs.io](https://tpm2-tss.readthedocs.io/).
 
 # Test Suite
 This repository contains a test suite intended to exercise the TCTI, SAPI and ESAPI code.
@@ -172,6 +180,7 @@ SAPI library, TAB/RM, and Test Code Block Diagram:
 ![Architecture Block Diagram](doc/TSS_block_diagram.png)
 
 # Project Layout
+```
 ├── doc     : various bits of documentation\
 ├── include : header files installed in $(includedir)\
 │   └── tss2      : all public headers for this project\
@@ -191,3 +200,4 @@ SAPI library, TAB/RM, and Test Code Block Diagram:
     ├── integration : integration test harness and test cases\
     ├── tpmclient   : monolithic, legacy test application\
     └── unit        : unit tests
+```
