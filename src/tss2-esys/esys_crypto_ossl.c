@@ -12,6 +12,7 @@
 #include <openssl/aes.h>
 #include <openssl/rsa.h>
 #include <openssl/engine.h>
+#include <openssl/rand.h>
 #include <stdio.h>
 
 #include "tss2_esys.h"
@@ -510,7 +511,7 @@ iesys_cryptossl_random2b(TPM2B_NONCE * nonce, size_t num_bytes)
         nonce->size = num_bytes;
     }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
     RAND_set_rand_method(RAND_OpenSSL());
 #else
     RAND_set_rand_method(RAND_SSLeay());
@@ -548,7 +549,7 @@ iesys_cryptossl_pk_encrypt(TPM2B_PUBLIC * pub_tpm_key,
                            size_t * out_size, const char *label)
 {
     const RAND_METHOD *rand_save = RAND_get_rand_method();
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
     RAND_set_rand_method(RAND_OpenSSL());
 #else
     RAND_set_rand_method(RAND_SSLeay());
@@ -663,6 +664,7 @@ iesys_cryptossl_pk_encrypt(TPM2B_PUBLIC * pub_tpm_key,
                    "Could not duplicate OAEP label", cleanup);
     }
 
+#ifdef EVP_PKEY_CTX_set0_rsa_oaep_label
     if (1 != EVP_PKEY_CTX_set0_rsa_oaep_label(ctx, label_copy, strlen(label_copy)+1)) {
         OPENSSL_free(label_copy);
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
@@ -673,6 +675,9 @@ iesys_cryptossl_pk_encrypt(TPM2B_PUBLIC * pub_tpm_key,
         goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
                    "Could not set hash algorithm.", cleanup);
     }
+#else
+    (void) label;
+#endif
 
     /* Determine out size */
     if (1 != EVP_PKEY_encrypt(ctx, NULL, out_size, in_buffer, in_size)) {
